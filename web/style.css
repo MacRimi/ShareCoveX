@@ -84,6 +84,9 @@ h1 em { color:#315f8c; }
 .orbit-smb { color:#ffc16f; border-color:#a97331 !important; }.orbit-nfs { color:#7ed8c5; border-color:#3a897b !important; }
 .card,.panel { background:#252526e8; box-shadow:0 18px 45px #0006; }
 .card:before { background:#30343c; }
+.cards .card:after { content:''; position:absolute; left:28px; right:28px; bottom:13px; height:3px; border-radius:2px; background:var(--protocol-accent); opacity:.78; }
+.cards .card:first-child { --protocol-accent:#b86b19; }
+.cards .card:nth-child(2) { --protocol-accent:#268f7f; }
 .status { background:#333336; }.status.running { color:#8bd6a5; background:#20382a; }.status.failed { color:#ff9b94; background:#4b2725; }
 .switch input { background:#55555b; }.switch input:after { background:#f1f1f1; }.switch input:checked { background:#315f8c; }
 .view-tabs button { background:#2d2d30; color:var(--muted); }.view-tabs button.active { background:#315f8c; color:#fff; }
