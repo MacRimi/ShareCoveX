@@ -1,6 +1,6 @@
 services:
   sharecovex:
-    build: .
+    image: ghcr.io/macrimi/sharecovex:latest
     restart: unless-stopped
     environment:
       SHARECOVEX_ADMIN_PASSWORD: ${SHARECOVEX_ADMIN_PASSWORD:?Set a strong password}

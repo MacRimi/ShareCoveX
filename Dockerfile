@@ -10,6 +10,11 @@ RUN git clone https://github.com/unfs3/unfs3.git . \
 
 FROM debian:bookworm-slim
 
+LABEL org.opencontainers.image.title="ShareCoveX" \
+      org.opencontainers.image.description="Publish existing host folders over SMB, NFS, or both." \
+      org.opencontainers.image.source="https://github.com/MacRimi/ShareCoveX" \
+      org.opencontainers.image.licenses="MIT"
+
 ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 samba samba-common-bin samba-vfs-modules avahi-daemon libtirpc3 tini acl \
