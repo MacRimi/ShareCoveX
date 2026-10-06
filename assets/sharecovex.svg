@@ -7,7 +7,7 @@
     <style>.sans{font-family:'Avenir Next','Trebuchet MS',sans-serif}.mono{font-family:Menlo,Consolas,monospace}.white{fill:#f4f4f5}.muted{fill:#a8a8ac}.blue{fill:#58a8f7}</style>
   </defs>
   <rect width="1200" height="630" rx="32" fill="#1e1e1e"/>
-  <path d="M0 0h1200v630H0z" fill="none" stroke="#38383d" stroke-width="2"/>
+  <rect x="1" y="1" width="1198" height="628" rx="31" fill="none" stroke="#38383d" stroke-width="2"/>
 
   <g transform="translate(62 48)">
     <rect width="66" height="66" rx="20" fill="#376b9d"/>
