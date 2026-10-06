@@ -148,7 +148,7 @@ class MountpointTests(unittest.TestCase):
             runtime.sync()
         start.assert_called_once()
         self.assertEqual(start.call_args.args[0], "mdns")
-        self.assertEqual(start.call_args.args[1][0], "avahi-daemon")
+        self.assertEqual(start.call_args.args[1][:2], ["avahi-daemon", "--no-chroot"])
 
     def test_smb_password_minimum_is_six_for_creation_and_rotation(self):
         runtime = object.__new__(Runtime)

@@ -287,9 +287,10 @@ def save(path, value):
 def samba_conf(value):
     has_guest = any(share["enabled"] and share["smb_enabled"] and share.get("smb_guest", False)
                     for share in value["shares"])
+    model = discovery_model(value)
     lines = ["[global]", "  server role = standalone server",
              f"  server string = {value.get('server_name', DEFAULTS['server_name'])}",
-             "  multicast dns register = no", "  fruit:model = TimeCapsule8,119",
+             "  multicast dns register = no", f"  fruit:model = {model}",
              f"  map to guest = {'Bad User' if has_guest else 'Never'}",
              "  guest account = nobody",
              f"  server min protocol = {value.get('smb_min_protocol', DEFAULTS['smb_min_protocol'])}",
@@ -347,15 +348,22 @@ def avahi_conf(value):
             "[reflector]\nenable-reflector=no\n")
 
 
+def discovery_model(value):
+    has_time_machine = any(share.get("enabled", True) and share.get("time_machine", False)
+                           for share in value["shares"])
+    return "TimeCapsule8,119" if has_time_machine else "Xserve"
+
+
 def avahi_service(value):
     name = escape(value["server_name"])
+    model = discovery_model(value)
     return ("<?xml version=\"1.0\" standalone='no'?>\n"
             "<!DOCTYPE service-group SYSTEM \"avahi-service.dtd\">\n"
             "<service-group>\n"
             f"  <name>{name}</name>\n"
             "  <service><type>_smb._tcp</type><port>445</port></service>\n"
             "  <service><type>_device-info._tcp</type><port>0</port>"
-            "<txt-record>model=TimeCapsule8,119</txt-record></service>\n"
+            f"<txt-record>model={model}</txt-record></service>\n"
             "</service-group>\n")
 
 

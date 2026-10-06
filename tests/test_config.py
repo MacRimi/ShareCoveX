@@ -65,11 +65,17 @@ class ConfigTests(unittest.TestCase):
     def test_server_name_configures_samba_and_bonjour(self):
         value = validate_settings({"shares": [], "server_name": "Cove NAS", "mdns_enabled": True})
         self.assertIn("server string = Cove NAS", samba_conf(value))
-        self.assertIn("fruit:model = TimeCapsule8,119", samba_conf(value))
+        self.assertIn("fruit:model = Xserve", samba_conf(value))
         self.assertIn("host-name=cove-nas", avahi_conf(value))
         self.assertIn("<name>Cove NAS</name>", avahi_service(value))
         self.assertIn("<type>_smb._tcp</type>", avahi_service(value))
+        self.assertIn("model=Xserve", avahi_service(value))
+        value["shares"] = [{"enabled": True, "smb_enabled": False, "time_machine": True}]
         self.assertIn("model=TimeCapsule8,119", avahi_service(value))
+        self.assertIn("fruit:model = TimeCapsule8,119", samba_conf(value))
+        value["shares"][0]["enabled"] = False
+        self.assertIn("model=Xserve", avahi_service(value))
+        self.assertIn("fruit:model = Xserve", samba_conf(value))
         for bad in ("", "bad\nname", " bad", "bad/host", "<script>", "x" * 49):
             with self.assertRaises(ValueError):
                 validate_settings({"shares": [], "server_name": bad})

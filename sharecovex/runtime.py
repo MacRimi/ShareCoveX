@@ -403,7 +403,10 @@ class Runtime:
                     if mdns and time.monotonic() - self.last_start.get("mdns", 0) < 30:
                         self.errors["mdns"] = f"Exited with code {mdns.returncode}"
                     else:
-                        self._start("mdns", ["avahi-daemon", "-f", str(CONFIG / "avahi-daemon.conf")])
+                        # Avahi's internal chroot helper can exit as a zombie in LXC/OCI.
+                        # It still drops to the avahi user when only chrooting is disabled.
+                        self._start("mdns", ["avahi-daemon", "--no-chroot", "-f",
+                                             str(CONFIG / "avahi-daemon.conf")])
 
     def status(self):
         with self.lock:
