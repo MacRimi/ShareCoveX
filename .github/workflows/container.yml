@@ -2,8 +2,13 @@ name: Container image
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
+    branches: [main]
+    paths:
+      - Dockerfile
+      - sharecovex/**
+      - web/**
+      - .github/workflows/container.yml
   workflow_dispatch:
 
 permissions:

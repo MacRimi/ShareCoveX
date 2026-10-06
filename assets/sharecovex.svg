@@ -1,32 +1,63 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 430" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
   <title id="title">ShareCoveX</title>
-  <desc id="desc">Multiple host folders flow to independent SMB and NFS shares.</desc>
+  <desc id="desc">ShareCoveX publishes host folders through Samba and NFS from Docker or Proxmox OCI containers.</desc>
   <defs>
-    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#1e1e1e"/><stop offset="1" stop-color="#29292b"/></linearGradient>
-    <linearGradient id="card" x2="0" y2="1"><stop stop-color="#ffffff" stop-opacity=".18"/><stop offset="1" stop-color="#ffffff" stop-opacity=".06"/></linearGradient>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#d8e9ff" stroke-opacity=".06"/></pattern>
-    <filter id="shadow"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#111715" flood-opacity=".45"/></filter>
+    <filter id="card-shadow" x="-15%" y="-20%" width="130%" height="150%"><feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#08090a" flood-opacity=".46"/></filter>
+    <filter id="status-glow" x="-300%" y="-300%" width="700%" height="700%"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>.sans{font-family:'Avenir Next','Trebuchet MS',sans-serif}.mono{font-family:Menlo,Consolas,monospace}.white{fill:#f4f4f5}.muted{fill:#a8a8ac}.blue{fill:#58a8f7}</style>
   </defs>
-  <rect width="1200" height="430" rx="30" fill="url(#bg)"/>
-  <rect width="1200" height="430" rx="30" fill="url(#grid)"/>
-  <circle cx="1110" cy="-10" r="300" fill="#315f8c" opacity=".12"/>
-  <text x="72" y="87" fill="#d8e9ff" font-family="Menlo,Consolas,monospace" font-size="15" letter-spacing="3">SHARE WITHOUT THE EXTRA LAYER</text>
-  <text x="70" y="175" fill="#ffffff" font-family="Avenir Next,Trebuchet MS,sans-serif" font-weight="800" font-size="70" letter-spacing="-4">ShareCoveX<tspan fill="#f0a95a">.</tspan></text>
-  <text x="74" y="225" fill="#d8e9ff" font-family="Avenir Next,Trebuchet MS,sans-serif" font-size="22">One home for every folder. More than one way in.</text>
-  <rect x="72" y="284" width="240" height="67" rx="15" fill="#f0a95a"/>
-  <text x="100" y="326" fill="#202927" font-family="Menlo,Consolas,monospace" font-weight="700" font-size="17">SMB  +  NFS</text>
-  <g filter="url(#shadow)">
-    <rect x="697" y="75" width="425" height="284" rx="23" fill="#303034" stroke="#72727a" stroke-opacity=".7"/>
-    <rect x="719" y="96" width="381" height="50" rx="12" fill="url(#card)"/>
-    <circle cx="745" cy="121" r="7" fill="#f0a95a"/>
-    <text x="764" y="127" fill="#edf6f1" font-family="Menlo,Consolas,monospace" font-size="15">/shares/media</text>
-    <rect x="719" y="160" width="381" height="50" rx="12" fill="url(#card)"/>
-    <circle cx="745" cy="185" r="7" fill="#56a8ff"/>
-    <text x="764" y="191" fill="#edf6f1" font-family="Menlo,Consolas,monospace" font-size="15">/shares/backups</text>
-    <rect x="719" y="224" width="381" height="50" rx="12" fill="url(#card)"/>
-    <circle cx="745" cy="249" r="7" fill="#7ed8c5"/>
-    <text x="764" y="255" fill="#edf6f1" font-family="Menlo,Consolas,monospace" font-size="15">/shares/projects</text>
-    <path d="M742 307H1080" stroke="#78a9dc" stroke-opacity=".5"/>
-    <text x="744" y="333" fill="#b8d4ef" font-family="Menlo,Consolas,monospace" font-size="12">PUBLISH ONLY WHAT YOU CHOOSE</text>
+  <rect width="1200" height="630" rx="32" fill="#1e1e1e"/>
+  <path d="M0 0h1200v630H0z" fill="none" stroke="#38383d" stroke-width="2"/>
+
+  <g transform="translate(62 48)">
+    <rect width="66" height="66" rx="20" fill="#376b9d"/>
+    <rect x="1" y="1" width="64" height="64" rx="19" fill="none" stroke="#78a9dc" stroke-opacity=".44" stroke-width="2"/>
+    <text x="33" y="40" text-anchor="middle" class="sans white" font-size="22" font-weight="800" letter-spacing="-2">SCX</text>
+    <circle cx="27" cy="62" r="4.5" fill="#f0a95a"/><circle cx="41" cy="62" r="4.5" fill="#63ff6b"/>
+    <text x="84" y="29" class="sans white" font-size="25" font-weight="800" letter-spacing="-.8">ShareCoveX</text>
+    <text x="85" y="54" class="sans muted" font-size="14">One place for your files. More than one way in.</text>
   </g>
+  <g transform="translate(964 61)">
+    <rect width="174" height="40" rx="20" fill="#242426" stroke="#376b9d" stroke-width="1.5"/>
+    <text x="87" y="26" text-anchor="middle" class="mono" fill="#8fc2f3" font-size="13" letter-spacing="1.2">DOCKER · OCI</text>
+  </g>
+  <path d="M62 137H1138" stroke="#3a3a3f" stroke-width="1.5"/>
+
+  <g transform="translate(64 174)">
+    <text class="mono blue" font-size="13" letter-spacing="2.6">FILES / LOCAL NETWORK</text>
+    <text y="76" class="sans white" font-size="62" font-weight="800" letter-spacing="-3.4">Your folders.</text>
+    <text y="140" class="sans" fill="#376b9d" font-size="62" font-weight="800" letter-spacing="-3.4">Your way to share.</text>
+    <text y="184" class="sans muted" font-size="17">Publish each host folder over SMB, NFS, or both.</text>
+  </g>
+
+  <g transform="translate(868 278)">
+    <circle r="116" fill="none" stroke="#58a8f7" stroke-width="1.5" stroke-dasharray="4 5"/>
+    <g transform="rotate(-7)">
+      <rect x="-55" y="-53" width="128" height="112" rx="32" fill="#c47a37"/>
+      <rect x="-72" y="-68" width="128" height="112" rx="32" fill="#376b9d"/>
+      <text x="-8" y="-2" text-anchor="middle" class="mono white" font-size="23">/shares</text>
+    </g>
+    <g transform="translate(84 -96)"><rect x="-27" y="-16" width="54" height="32" rx="16" fill="#29292c" stroke="#b86b19" stroke-width="1.5"/><text y="5" text-anchor="middle" class="mono" fill="#ffb65f" font-size="12">SMB</text></g>
+    <g transform="translate(-105 85)"><rect x="-27" y="-16" width="54" height="32" rx="16" fill="#29292c" stroke="#268f7f" stroke-width="1.5"/><text y="5" text-anchor="middle" class="mono" fill="#75d6c7" font-size="12">NFS</text></g>
+  </g>
+
+  <g transform="translate(64 418)" filter="url(#card-shadow)">
+    <rect width="518" height="158" rx="24" fill="#242426" stroke="#44444a" stroke-width="1.5"/>
+    <path d="M410 0h84a24 24 0 0 1 24 24v37c-60 17-97-8-108-61z" fill="#32363e"/>
+    <circle cx="470" cy="31" r="7" fill="#63ff6b" filter="url(#status-glow)"/>
+    <text x="28" y="34" class="mono blue" font-size="12" letter-spacing="2">01 / LOCAL NETWORK</text>
+    <text x="28" y="79" class="sans white" font-size="31" font-weight="800">Samba</text>
+    <text x="28" y="110" class="sans muted" font-size="15">SMB access for Windows, macOS, and Linux.</text>
+    <rect x="28" y="128" width="462" height="3" rx="1.5" fill="#b86b19" opacity=".65"/>
+  </g>
+  <g transform="translate(618 418)" filter="url(#card-shadow)">
+    <rect width="518" height="158" rx="24" fill="#242426" stroke="#44444a" stroke-width="1.5"/>
+    <path d="M410 0h84a24 24 0 0 1 24 24v37c-60 17-97-8-108-61z" fill="#32363e"/>
+    <circle cx="470" cy="31" r="7" fill="#63ff6b" filter="url(#status-glow)"/>
+    <text x="28" y="34" class="mono blue" font-size="12" letter-spacing="2">02 / LOCAL NETWORK</text>
+    <text x="28" y="79" class="sans white" font-size="31" font-weight="800">NFS</text>
+    <text x="28" y="110" class="sans muted" font-size="15">NFSv3 and NFSv4 for compatible local clients.</text>
+    <rect x="28" y="128" width="462" height="3" rx="1.5" fill="#268f7f" opacity=".75"/>
+  </g>
+  <text x="600" y="610" text-anchor="middle" class="mono" fill="#74747a" font-size="11" letter-spacing="1.5">SELF-CONTAINED FILE SHARING FOR DOCKER AND PROXMOX OCI</text>
 </svg>
