@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">ShareCoveX</title>
+  <desc id="desc">SCX sobre un cuadrado azul con puntos naranja y verde.</desc>
+  <rect x="18" y="18" width="220" height="220" rx="64" fill="#315f8c"/>
+  <rect x="19" y="19" width="218" height="218" rx="63" fill="none" stroke="#78a9dc" stroke-opacity=".42" stroke-width="2"/>
+  <text x="128" y="144" text-anchor="middle" fill="#fff" font-family="Avenir Next,Trebuchet MS,sans-serif" font-size="72" font-weight="800" letter-spacing="-7">SCX</text>
+  <circle cx="113" cy="224" r="9" fill="#f0a95a"/>
+  <circle cx="143" cy="224" r="9" fill="#63ff6b"/>
+</svg>

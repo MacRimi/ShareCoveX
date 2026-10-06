@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 430" role="img" aria-labelledby="title desc">
+  <title id="title">ShareCoveX</title>
+  <desc id="desc">Multiple host folders flow to independent SMB and NFS shares.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#1e1e1e"/><stop offset="1" stop-color="#29292b"/></linearGradient>
+    <linearGradient id="card" x2="0" y2="1"><stop stop-color="#ffffff" stop-opacity=".18"/><stop offset="1" stop-color="#ffffff" stop-opacity=".06"/></linearGradient>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#d8e9ff" stroke-opacity=".06"/></pattern>
+    <filter id="shadow"><feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#111715" flood-opacity=".45"/></filter>
+  </defs>
+  <rect width="1200" height="430" rx="30" fill="url(#bg)"/>
+  <rect width="1200" height="430" rx="30" fill="url(#grid)"/>
+  <circle cx="1110" cy="-10" r="300" fill="#315f8c" opacity=".12"/>
+  <text x="72" y="87" fill="#d8e9ff" font-family="Menlo,Consolas,monospace" font-size="15" letter-spacing="3">SHARE WITHOUT THE EXTRA LAYER</text>
+  <text x="70" y="175" fill="#ffffff" font-family="Avenir Next,Trebuchet MS,sans-serif" font-weight="800" font-size="70" letter-spacing="-4">ShareCoveX<tspan fill="#f0a95a">.</tspan></text>
+  <text x="74" y="225" fill="#d8e9ff" font-family="Avenir Next,Trebuchet MS,sans-serif" font-size="22">One home for every folder. More than one way in.</text>
+  <rect x="72" y="284" width="240" height="67" rx="15" fill="#f0a95a"/>
+  <text x="100" y="326" fill="#202927" font-family="Menlo,Consolas,monospace" font-weight="700" font-size="17">SMB  +  NFS</text>
+  <g filter="url(#shadow)">
+    <rect x="697" y="75" width="425" height="284" rx="23" fill="#303034" stroke="#72727a" stroke-opacity=".7"/>
+    <rect x="719" y="96" width="381" height="50" rx="12" fill="url(#card)"/>
+    <circle cx="745" cy="121" r="7" fill="#f0a95a"/>
+    <text x="764" y="127" fill="#edf6f1" font-family="Menlo,Consolas,monospace" font-size="15">/shares/media</text>
+    <rect x="719" y="160" width="381" height="50" rx="12" fill="url(#card)"/>
+    <circle cx="745" cy="185" r="7" fill="#56a8ff"/>
+    <text x="764" y="191" fill="#edf6f1" font-family="Menlo,Consolas,monospace" font-size="15">/shares/backups</text>
+    <rect x="719" y="224" width="381" height="50" rx="12" fill="url(#card)"/>
+    <circle cx="745" cy="249" r="7" fill="#7ed8c5"/>
+    <text x="764" y="255" fill="#edf6f1" font-family="Menlo,Consolas,monospace" font-size="15">/shares/projects</text>
+    <path d="M742 307H1080" stroke="#78a9dc" stroke-opacity=".5"/>
+    <text x="744" y="333" fill="#b8d4ef" font-family="Menlo,Consolas,monospace" font-size="12">PUBLISH ONLY WHAT YOU CHOOSE</text>
+  </g>
+</svg>

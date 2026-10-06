@@ -1,0 +1,6 @@
+services:
+  sharecovex:
+    cap_add:
+      - DAC_READ_SEARCH
+    security_opt:
+      - seccomp=unconfined

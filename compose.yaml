@@ -1,0 +1,16 @@
+services:
+  sharecovex:
+    build: .
+    restart: unless-stopped
+    environment:
+      SHARECOVEX_ADMIN_PASSWORD: ${SHARECOVEX_ADMIN_PASSWORD:?Set a strong password}
+    ports:
+      - "127.0.0.1:8080:8080/tcp"
+      - "445:445/tcp"
+      - "2049:2049/tcp"
+      - "20048:20048/tcp"
+    volumes:
+      - ./config:/config
+      - ${SHARECOVEX_HOST_PATH_MEDIA:?Set an absolute host path}:/shares/media
+      # Add as many host paths as needed, each with a unique /shares/<id> target:
+      # - /srv/shares/backups:/shares/backups
