@@ -64,3 +64,29 @@ for (const language of ['en', 'de', 'es', 'fr', 'it', 'pt', 'sk', 'sv']) {
     catalog['No se pudo leer: {error}'].replace('{error}', catalog['Unknown user']));
 }
 process.stdout.write('PASS: every template in all eight locales, preserved values and nested service errors\n');
+
+const textNode = { nodeValue: 'Nombre en red: Backup  $&', parentElement: { closest: () => null } };
+const ignoredNode = { nodeValue: 'Error', parentElement: { closest: () => ({}) } };
+const attributes = { title: 'Abrir /shares/two  spaces' };
+const attributeNode = {
+  closest: () => null,
+  hasAttribute: name => Object.hasOwn(attributes, name),
+  getAttribute: name => attributes[name],
+  setAttribute: (name, value) => { attributes[name] = value; },
+};
+context.NodeFilter = { SHOW_TEXT: 4 };
+context.document.body = {};
+context.document.createTreeWalker = () => {
+  const nodes = [textNode, ignoredNode];
+  return { nextNode: () => nodes.shift() };
+};
+context.document.querySelectorAll = () => [attributeNode];
+for (const language of ['de', 'pt', 'en', 'es']) {
+  const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, `../web/locales/${language}.json`), 'utf8'));
+  load(catalog);
+  vm.runInContext('translatePage()', context);
+  assert.equal(textNode.nodeValue, catalog['Nombre en red: {name}'].replace('{name}', () => 'Backup  $&'));
+  assert.equal(attributes.title, catalog['Abrir {path}'].replace('{path}', '/shares/two  spaces'));
+  assert.equal(ignoredNode.nodeValue, 'Error');
+}
+process.stdout.write('PASS: DOM language switching, attributes and ignored identifiers\n');
