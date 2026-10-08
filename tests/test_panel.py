@@ -93,6 +93,7 @@ class PanelTests(unittest.TestCase):
         self.assertNotIn(PASSWORD, flags)
         response, value = self.request("GET", "/api/state", cookie=cookie)
         self.assertEqual((response.status, value["user"], value["admins"]), (200, "admin", ["admin"]))
+        self.assertEqual(value["version"], "dev")
         response, _, _ = self.sign_in(headers={"X-Forwarded-Proto": "https"})
         self.assertIn("; Secure", response.getheader("Set-Cookie"))
 

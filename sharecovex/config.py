@@ -225,7 +225,14 @@ def validate_settings(value):
                 continue
             a, b = left["path"], right["path"]
             if not a or not b or a.startswith(b + "/") or b.startswith(a + "/"):
-                raise ValueError("Overlapping shares could bypass access restrictions")
+                # A folder inside a shared one may only add the protocol the
+                # outer share lacks. A rule of its own for a protocol both
+                # publish could be bypassed through the outer share, and a
+                # Time Machine destination needs its folder to itself.
+                if (left["time_machine"] or right["time_machine"]
+                        or (left["smb_enabled"] and right["smb_enabled"])
+                        or (left["nfs_enabled"] and right["nfs_enabled"])):
+                    raise ValueError("Overlapping shares could bypass access restrictions")
     return value
 
 

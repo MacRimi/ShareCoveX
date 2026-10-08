@@ -1,9 +1,16 @@
+// Format source messages in one pass; the page translator localizes them.
+function formatMessage(template, values) {
+  return template.replace(/\{([a-z][a-z0-9_]*)\}/gi,
+    (token, name) => Object.hasOwn(values, name) ? String(values[name]) : token);
+}
+
 const $ = selector => document.querySelector(selector);
 const editorElement = $('#editor');
 let current;
 let editing = null;
 let activeTarget = null;
 let expandedPaths = new Set();
+let openMounts = new Set();
 let treeCache = new Map();
 let treePending = new Map();
 let pendingButton = null;
@@ -12,9 +19,10 @@ let editorMessageTimer = null;
 let recoveryTimer = null;
 
 const actionIcons = {
-  edit: '<svg class="action-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>',
+  edit: '<svg class="action-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>',
   save: '<svg class="action-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
-  delete: '<svg class="action-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 15H6L5 6M10 11v6M14 11v6"/></svg>'
+  delete: '<svg class="action-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 15H6L5 6M10 11v6M14 11v6"/></svg>',
+  chevron: '<svg class="chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>'
 };
 
 function setActionContent(button, icon, label) {
@@ -28,8 +36,52 @@ const deleteResourceButton = $('#delete-resource');
 setActionContent(deleteResourceButton, 'delete', deleteResourceButton.textContent?.trim() || 'Eliminar configuracion');
 const overlaps = (left, right) => !left || !right || left === right || left.startsWith(right + '/') || right.startsWith(left + '/');
 const treeKey = (id, path) => `${id}/${path}`;
+const isAbove = (ancestor, path) => ancestor !== path && (!ancestor || path.startsWith(ancestor + '/'));
+
+// What the shares above and below a route already publish. A folder inside a
+// shared one may only add the protocol that is still free, and a Time Machine
+// destination keeps its folder to itself.
+function takenProtocols(id, path) {
+  const taken = { smb: false, nfs: false, exclusive: false, any: false };
+  for (const share of current.settings.shares) {
+    if (share.id !== id || share.path === path || !overlaps(share.path, path)) continue;
+    taken.any = true;
+    taken.smb = taken.smb || !!share.smb_enabled;
+    taken.nfs = taken.nfs || !!share.nfs_enabled;
+    taken.exclusive = taken.exclusive || !!share.time_machine;
+  }
+  return taken;
+}
+
+// The protocols a folder is already reached by through the shares above it.
+function inheritedProtocols(id, path) {
+  const inherited = { smb: false, nfs: false };
+  for (const share of current.settings.shares) {
+    if (share.id !== id || share.enabled === false || !isAbove(share.path, path)) continue;
+    inherited.smb = inherited.smb || !!share.smb_enabled;
+    inherited.nfs = inherited.nfs || !!share.nfs_enabled;
+  }
+  return inherited;
+}
+
+function appendBadges(row, share, inherited) {
+  const badges = document.createElement('div');
+  badges.className = 'route-badges';
+  const add = (text, className) => {
+    const badge = document.createElement('span');
+    if (className) badge.className = className;
+    badge.textContent = text;
+    badges.append(badge);
+  };
+  if (share && share.enabled === false) add('Pausado');
+  for (const [key, label] of [['smb', 'SMB'], ['nfs', 'NFS']]) {
+    // A protocol reached through the share above looks the same as one of its own.
+    if ((share && share.enabled !== false && share[`${key}_enabled`]) || inherited[key]) add(label, `protocol-${key}`);
+  }
+  if (badges.children.length) row.append(badges);
+}
 const routePath = (id, path) => `/shares/${id}${path ? '/' + path : ''}`;
-const permissionsText = access => `UID:GID ${access.uid}:${access.gid} · ${access.mode} · ${access.writable ? 'Compatible con escritura' : `Sin escritura para ${access.shared_uid}:${access.shared_gid}`}`;
+const permissionsText = access => access.writable ? formatMessage('UID:GID {uid}:{gid} · {mode} · Compatible con escritura', access) : formatMessage('UID:GID {uid}:{gid} · {mode} · Sin escritura para {shared_uid}:{shared_gid}', access);
 // A fixed sentence in its own element, so the language catalogue can match it.
 function appendPermissions(parent, access) {
   const permissions = document.createElement('small');
@@ -58,7 +110,7 @@ function appendPermissions(parent, access) {
 function startButtonFeedback(button) {
   if (!button || button.disabled) return;
   pendingButton = button;
-  button.dataset.originalLabel = button.textContent;
+  button.dataset.originalContent = button.innerHTML;
   button.textContent = 'Guardando...';
   button.disabled = true;
   button.classList.add('is-busy');
@@ -74,7 +126,8 @@ function finishButtonFeedback(success) {
   button.textContent = success ? 'Guardado' : 'Reintentar';
   button.removeAttribute('aria-busy');
   setTimeout(() => {
-    button.textContent = button.dataset.originalLabel || 'Guardar';
+    if (button.dataset.originalContent) button.innerHTML = button.dataset.originalContent;
+    else button.textContent = 'Guardar';
     button.disabled = false;
     button.classList.remove('is-saved', 'is-failed');
   }, success ? 900 : 1400);
@@ -175,13 +228,25 @@ function message(value, error = false) {
   }, 5000);
 }
 
-function editorMessage(value, error = false) {
+let invalidField = null;
+const lockedProtocols = { smb: false, nfs: false };
+
+// `field` is the control the message is about: the message is placed right
+// above it and the control is marked, so the reason is read where it is fixed.
+function editorMessage(value, error = false, field = null) {
   const element = $('#editor-message');
   clearTimeout(editorMessageTimer);
   editorMessageTimer = null;
+  invalidField?.classList.toggle('invalid', false);
+  invalidField = value ? field : null;
+  invalidField?.classList.toggle('invalid', true);
+  if (field && value) field.before?.(element);
+  else if (element.parentElement !== editorElement) editorElement.prepend?.(element);
   element.textContent = value;
   element.hidden = !value;
   element.classList.toggle('error', error);
+  // A save that was refused here never reaches the server: free its button.
+  if (value && error) finishButtonFeedback(false);
   if (value) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
   if (value && !error) editorMessageTimer = setTimeout(() => {
     if (element.textContent !== value) return;
@@ -202,7 +267,16 @@ function serviceStatus(state) {
     label.textContent = '';
     label.className = `status service-indicator ${statusKind}`;
     label.ariaLabel = statusText;
-    label.title = [statusText, switchedOn ? item.error || (nfsUnverified ? 'Comprueba el montaje y los permisos desde otro cliente.' : '') : ''].filter(Boolean).join(': ');
+    const detail = switchedOn ? item.error || (nfsUnverified ? 'Comprueba el montaje y los permisos desde otro cliente.' : '') : '';
+    const statusTemplates = {
+      'Desactivado': 'Desactivado: {error}',
+      'Activo, sin recursos': 'Activo, sin recursos: {error}',
+      'Migracion pendiente': 'Migracion pendiente: {error}',
+      'Escuchando': 'Escuchando: {error}',
+      'En marcha': 'En marcha: {error}',
+      'Error': 'Error: {error}'
+    };
+    label.title = detail ? formatMessage(statusTemplates[statusText], { error: detail }) : statusText;
     $(`#${service}-service`).checked = switchedOn;
   }
   const discovery = state.services.mdns;
@@ -215,7 +289,7 @@ function serviceStatus(state) {
   label.className = `status ${discovery.running ? 'running' : discovery.enabled && state.services.smb.running ? 'failed' : ''}`;
   label.title = discovery.error || '';
   const protocols = state.settings.nfs_protocols || ['3'];
-  $('#nfs-endpoint').textContent = protocols.length === 2 ? 'NFSv3 + NFSv4' : `NFSv${protocols[0]}`;
+  $('#nfs-endpoint').textContent = protocols.length === 2 ? 'NFSv3 + NFSv4' : formatMessage('NFSv{version}', { version: protocols[0] });
 }
 
 function showNfsMapping() {
@@ -243,7 +317,20 @@ function showSmbAccess() {
   }
 }
 
+// A Time Machine destination is a Samba-only folder: while it is selected the
+// NFS section is dimmed and its switch cannot be turned on.
+function showTimeMachineLock() {
+  const timeMachine = $('#time-machine').checked;
+  if (timeMachine) $('#nfs-enabled').checked = false;
+  $('#nfs-enabled').disabled = timeMachine || lockedProtocols.nfs;
+  $('#nfs-section').classList.toggle('section-locked', timeMachine);
+  $('#nfs-section').title = timeMachine
+    ? 'No se puede activar NFS mientras Time Machine esta activo. Time Machine necesita un recurso exclusivo de Samba, con escritura, usuario autenticado y sin NFS.'
+    : '';
+}
+
 function showProtocolOptions() {
+  showTimeMachineLock();
   $('#smb-options').hidden = !$('#smb-enabled').checked;
   $('#nfs-options').hidden = !$('#nfs-enabled').checked;
   showResourceMode();
@@ -251,8 +338,34 @@ function showProtocolOptions() {
   showSmbAccess();
 }
 
+// A protocol that a share above or below this route already uses is not
+// offered: the editor shows only what is left to add.
+function showInheritance() {
+  const taken = activeTarget ? takenProtocols(activeTarget.id, activeTarget.path)
+    : { smb: false, nfs: false, exclusive: false, any: false };
+  for (const key of ['smb', 'nfs']) {
+    const locked = taken[key] || taken.exclusive;
+    lockedProtocols[key] = locked;
+    const input = $(`#${key}-enabled`);
+    if (locked) input.checked = false;
+    input.disabled = locked;
+    $(`#${key}-section`).hidden = locked;
+  }
+  if (taken.any) $('#time-machine').checked = false;
+  $('#time-machine').disabled = taken.any;
+}
+
+// With no protocol nothing is shared; a route that is not created yet is
+// shared as soon as one is switched on, since it has no pause of its own.
+function syncResourceState() {
+  const any = $('#smb-enabled').checked || $('#nfs-enabled').checked;
+  if (!any) $('#resource-enabled').checked = false;
+  else if (!editing) $('#resource-enabled').checked = true;
+}
+
 function showResourceMode() {
-  const paused = !$('#resource-enabled').checked;
+  // Only a resource that exists can be paused; a new one is simply not shared yet.
+  const paused = !!editing && !$('#resource-enabled').checked;
   $('#resource-state-hint').hidden = !paused;
   $('.protocol-sections').classList.toggle('resource-paused', paused);
 }
@@ -260,10 +373,10 @@ function showResourceMode() {
 function resetForm() {
   editing = null;
   activeTarget = null;
-  expandedPaths.clear();
   $('#settings-form').reset();
   $('#delete-resource').hidden = true;
   editorMessage('');
+  showInheritance();
   showProtocolOptions();
   editorElement.hidden = true;
   renderMounts();
@@ -286,18 +399,22 @@ function showRootMode() {
 
 function openEditor(id, path, share) {
   $('#settings-form').reset();
-  $('#resource-enabled').checked = true;
   editorMessage('');
   activeTarget = { id, path };
   editing = share?.name || null;
   $('#delete-resource').hidden = !share;
+  // Pausing is for a resource that exists; a new one starts with nothing shared.
+  $('.resource-state').hidden = !share;
+  $('#resource-enabled').checked = false;
+  $('#smb-enabled').checked = false;
+  $('#nfs-enabled').checked = false;
   if (path) {
+    openMounts.add(id);
     const parts = path.split('/');
     for (let i = 1; i < parts.length; i++) expandedPaths.add(treeKey(id, parts.slice(0, i).join('/')));
   }
   if (!path) {
-    const hasChildShares = current.settings.shares.some(item => item.id === id && !!item.path);
-    $('#share-all').checked = !!share || !hasChildShares;
+    $('#share-all').checked = !!share;
   }
   const basename = (path.split('/').pop() || id).replace(/[^A-Za-z0-9_-]/g, '_');
   $('#name').value = share?.name || (/^[A-Za-z]/.test(basename) ? basename : `Share_${basename}`).slice(0, 32);
@@ -322,6 +439,7 @@ function openEditor(id, path, share) {
   for (const input of $('#smb-users').querySelectorAll('input')) {
     input.checked = !!share && (share.smb_users === null || share.smb_users.includes(input.value));
   }
+  showInheritance();
   showProtocolOptions();
   showRootMode();
   editorElement.hidden = false;
@@ -329,78 +447,83 @@ function openEditor(id, path, share) {
   editorElement.previousElementSibling?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function renderRoute(id, path, parent, root = false, browsingRoot = false) {
+async function toggleRoute(id, path, root) {
+  const key = treeKey(id, path);
+  if (root) {
+    // A mount with its editor open stays as it is until the edit is saved or cancelled.
+    if (activeTarget?.id === id) return;
+    if (openMounts.has(id)) openMounts.delete(id);
+    else openMounts.add(id);
+  } else if (expandedPaths.has(key)) {
+    expandedPaths.delete(key);
+    if (activeTarget?.id === id && activeTarget.path.startsWith(path + '/')) {
+      resetForm();
+      return;
+    }
+  } else {
+    try {
+      const tree = await loadTree(id, path);
+      if (tree.children.length || tree.truncated) expandedPaths.add(key);
+    } catch (error) { message(error.message, true); return; }
+  }
+  renderMounts();
+}
+
+function renderRoute(id, path, parent, root = false, browsingRoot = false, open = false) {
   const share = current.settings.shares.find(item => item.id === id && item.path === path);
-  const overlapping = current.settings.shares.some(item => item.id === id && item !== share && overlaps(item.path, path));
+  const taken = takenProtocols(id, path);
+  const inherited = inheritedProtocols(id, path);
   const row = document.createElement('div');
   const selected = activeTarget?.id === id && activeTarget.path === path;
-  row.className = `route-row${root ? ' mount-root' : ''}${selected ? ' selected' : ''}`;
-  const label = document.createElement('div');
-  label.className = 'route-label';
-  const title = document.createElement('strong');
-  title.textContent = root ? routePath(id, '') : path.split('/').pop();
-  const detail = document.createElement('small');
-  const childCount = root ? current.settings.shares.filter(item => item.id === id && !!item.path).length : 0;
-  const knownTree = !root && treeCache.get(treeKey(id, path));
+  const key = treeKey(id, path);
+  const knownTree = !root && treeCache.get(key);
   const leaf = knownTree && !knownTree.children.length && !knownTree.truncated;
-  const protocols = share ? [share.smb_enabled ? 'SMB' : '', share.nfs_enabled ? 'NFS' : ''].filter(Boolean).join(' + ') : '';
-  detail.textContent = share ? `${share.name} · ${share.enabled === false ? `Pausado${protocols ? ` (${protocols})` : ''}` : protocols}` : childCount ? `${childCount} subcarpeta${childCount === 1 ? '' : 's'} configurada${childCount === 1 ? '' : 's'}` : overlapping ? 'Cubierta por otro recurso' : 'Directorio disponible · No compartido en red';
-  if (leaf) detail.textContent += ' · Sin subcarpetas';
-  label.append(title, detail);
-  if (root && share && current.mount_permissions?.[id]) {
-    appendPermissions(label, current.mount_permissions[id]);
-  }
   const parentPath = path.split('/').slice(0, -1).join('/');
   const parentTree = !root && treeCache.get(treeKey(id, parentPath));
-  const mayExpand = !root && !leaf && parentTree?.expandable?.[path.split('/').pop()] !== false;
+  const mayExpand = root || (!leaf && parentTree?.expandable?.[path.split('/').pop()] !== false);
+  if (!root) open = expandedPaths.has(key);
+  row.className = `route-row${root ? ' mount-root' : ''}${selected ? ' selected' : ''}${mayExpand ? ' expandable' : ''}${open ? ' open' : ''}`;
   if (mayExpand) {
     const expander = document.createElement('button');
     expander.type = 'button';
     expander.className = 'tree-expand';
-    expander.textContent = expandedPaths.has(treeKey(id, path)) ? '−' : '+';
-    expander.setAttribute('aria-label', `${expandedPaths.has(treeKey(id, path)) ? 'Contraer' : 'Abrir'} ${path}`);
-    expander.addEventListener('click', async () => {
-      const key = treeKey(id, path);
-      if (expandedPaths.has(key)) {
-        expandedPaths.delete(key);
-        if (activeTarget?.id === id && activeTarget.path.startsWith(path + '/')) {
-          resetForm();
-          return;
-        }
-      } else {
-        try {
-          const tree = await loadTree(id, path);
-          if (tree.children.length || tree.truncated) expandedPaths.add(key);
-        }
-        catch (error) { message(error.message, true); return; }
-      }
-      renderMounts();
-    });
+    expander.innerHTML = actionIcons.chevron;
+    expander.setAttribute('aria-expanded', String(open));
+    expander.setAttribute('aria-label', open ? formatMessage('Contraer {path}', { path: routePath(id, path) }) : formatMessage('Abrir {path}', { path: routePath(id, path) }));
     row.append(expander);
+    // The whole row opens and closes the folder; its own buttons keep their job.
+    row.addEventListener('click', event => {
+      if (event.target.closest?.('.route-action')) return;
+      toggleRoute(id, path, root);
+    });
+  } else {
+    const spacer = document.createElement('span');
+    spacer.className = 'tree-spacer';
+    row.append(spacer);
   }
+  const label = document.createElement('div');
+  label.className = 'route-label';
+  const title = document.createElement('strong');
+  title.setAttribute('data-i18n-ignore', '');
+  title.textContent = routePath(id, path);
+  const detail = document.createElement('small');
+  const below = current.settings.shares.filter(item => item.id === id && isAbove(path, item.path)).length;
+  const protocols = share ? [share.smb_enabled ? 'SMB' : '', share.nfs_enabled ? 'NFS' : ''].filter(Boolean).join(' + ') : '';
+  if (share && root) detail.textContent = share.enabled === false ? (protocols ? formatMessage('{name} · Pausado ({protocols})', { name: share.name, protocols }) : formatMessage('{name} · Pausado', { name: share.name })) : formatMessage('{name} · {protocols}', { name: share.name, protocols });
+  else if (share) detail.textContent = formatMessage('Nombre en red: {name}', { name: share.name });
+  else if (inherited.smb || inherited.nfs) detail.textContent = 'Incluida en el recurso superior';
+  else if (below) detail.textContent = below === 1 ? formatMessage('{count} subcarpeta configurada', { count: below }) : formatMessage('{count} subcarpetas configuradas', { count: below });
+  else detail.textContent = 'Directorio disponible · No compartido en red';
+  if (leaf) {
+    const suffix = document.createElement('span');
+    suffix.textContent = ' · Sin subcarpetas';
+    detail.append(suffix);
+  }
+  label.append(title, detail);
+  const access = root ? current.mount_permissions?.[id] : current.share_permissions?.[key];
+  if (share && access) appendPermissions(label, access);
   row.append(label);
-  if (share) {
-    const badges = document.createElement('div');
-    badges.className = 'route-badges';
-    if (share.enabled === false) {
-      const badge = document.createElement('span');
-      badge.textContent = 'Pausado';
-      badges.append(badge);
-    }
-    if (share.enabled !== false && share.smb_enabled) {
-      const badge = document.createElement('span');
-      badge.className = 'protocol-smb';
-      badge.textContent = 'SMB';
-      badges.append(badge);
-    }
-    if (share.enabled !== false && share.nfs_enabled) {
-      const badge = document.createElement('span');
-      badge.className = 'protocol-nfs';
-      badge.textContent = 'NFS';
-      badges.append(badge);
-    }
-    row.append(badges);
-  }
+  appendBadges(row, share, inherited);
   if (selected) {
     const save = document.createElement('button');
     save.type = 'submit';
@@ -419,8 +542,12 @@ function renderRoute(id, path, parent, root = false, browsingRoot = false) {
     edit.type = 'button';
     edit.className = 'route-action edit';
     setActionContent(edit, 'edit', 'Editar');
-    edit.disabled = !root && overlapping;
-    edit.title = !root && overlapping ? 'No se publican rutas padre e hija a la vez: se solaparian sus permisos.' : 'Configurar esta ruta';
+    // Nothing is left to configure where the shares around already use both protocols.
+    const full = !share && !root && (taken.exclusive || (taken.smb && taken.nfs));
+    edit.disabled = full;
+    edit.title = !full ? 'Configurar esta ruta'
+      : taken.exclusive ? 'Un destino Time Machine necesita su carpeta en exclusiva.'
+        : 'Esta carpeta ya se comparte por SMB y NFS: no queda ningun protocolo que anadir.';
     edit.addEventListener('click', () => openEditor(id, path, share));
     row.append(edit);
   }
@@ -438,7 +565,7 @@ function renderFolderTree(id, path, parent) {
     parent.append(loading);
     loadTree(id, path).then(() => {
       if (current.mounted_folders.includes(id)) renderMounts();
-    }).catch(error => { loading.textContent = `No se pudo leer: ${error.message}`; });
+    }).catch(error => { loading.textContent = formatMessage('No se pudo leer: {error}', { error: error.message }); });
     return;
   }
   if (!tree.children.length) {
@@ -468,55 +595,6 @@ function renderFolderTree(id, path, parent) {
   }
 }
 
-function renderPublishedRoutes(id, parent) {
-  const shares = current.settings.shares.filter(share => share.id === id && share.path);
-  if (!shares.length) return;
-  const list = document.createElement('div');
-  list.className = 'published-routes';
-  for (const share of shares) {
-    const row = document.createElement('div');
-    row.className = 'published-route';
-    const details = document.createElement('div');
-    details.className = 'published-route-details';
-    const path = document.createElement('strong');
-    path.textContent = routePath(id, share.path);
-    const name = document.createElement('small');
-    name.textContent = `Nombre en red: ${share.name}`;
-    details.append(path, name);
-    const access = current.share_permissions?.[treeKey(id, share.path)];
-    if (access) appendPermissions(details, access);
-    const protocols = document.createElement('div');
-    protocols.className = 'route-badges published-route-protocols';
-    if (share.enabled === false) {
-      const paused = document.createElement('span');
-      paused.textContent = 'Pausado';
-      protocols.append(paused);
-    } else {
-      if (share.smb_enabled) {
-        const smb = document.createElement('span');
-        smb.className = 'protocol-smb';
-        smb.textContent = 'SMB';
-        protocols.append(smb);
-      }
-      if (share.nfs_enabled) {
-        const nfs = document.createElement('span');
-        nfs.className = 'protocol-nfs';
-        nfs.textContent = 'NFS';
-        protocols.append(nfs);
-      }
-    }
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'route-action edit';
-    setActionContent(edit, 'edit', 'Editar');
-    edit.setAttribute('aria-label', `Editar ${share.path}`);
-    edit.addEventListener('click', () => openEditor(id, share.path, share));
-    row.append(details, protocols, edit);
-    list.append(row);
-  }
-  parent.append(list);
-}
-
 function renderMounts() {
   const list = $('#shares');
   const browsingRoot = activeTarget && !activeTarget.path && !$('#share-all').checked;
@@ -530,18 +608,127 @@ function renderMounts() {
   }
   for (const id of current.mounted_folders) {
     const mount = document.createElement('article');
-    mount.className = `mount-card${activeTarget?.id === id && !activeTarget.path ? ' editing' : ''}`;
     const editingRoot = activeTarget?.id === id && !activeTarget.path;
-    renderRoute(id, '', mount, true, editingRoot && browsingRoot);
-    if ((editingRoot && browsingRoot) || (activeTarget?.id === id && !!activeTarget.path)) {
+    // Folded by default; a mount opens when it is clicked or while one of its folders is being edited.
+    const open = openMounts.has(id) || (editingRoot && browsingRoot) || (activeTarget?.id === id && !!activeTarget.path);
+    mount.className = `mount-card${editingRoot ? ' editing' : ''}${open ? ' open' : ''}`;
+    renderRoute(id, '', mount, true, editingRoot && browsingRoot, open);
+    if (open) {
       const tree = document.createElement('div');
       tree.className = 'mount-tree';
       renderFolderTree(id, '', tree);
       mount.append(tree);
-    } else if (!editingRoot) renderPublishedRoutes(id, mount);
+    }
     list.append(mount);
   }
   if (!editorElement.isConnected) $('#resources-view').append(editorElement);
+}
+
+// The account whose password is being changed or whose removal is being
+// confirmed, in its own row: { kind: 'admins' | 'users', name, action }.
+let accountAction = null;
+
+const ACCOUNT_TEXTS = {
+  admins: { removal: 'Este administrador dejara de poder entrar en el panel.', removed: 'Administrador eliminado.' },
+  users: { removal: 'Este usuario dejara de poder entrar por SMB. Sus archivos no se borraran.', removed: 'Usuario eliminado.' }
+};
+
+function accountButton(text, className, run) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  if (className) button.className = className;
+  button.textContent = text;
+  button.addEventListener('click', run);
+  return button;
+}
+
+function setAccountAction(value) {
+  accountAction = value;
+  renderAdmins(current.admins || []);
+  renderUsers(current);
+}
+
+function passwordInput(text) {
+  const label = document.createElement('label');
+  const caption = document.createElement('span');
+  caption.textContent = text;
+  const input = document.createElement('input');
+  input.type = 'password';
+  input.autocomplete = 'new-password';
+  input.minLength = 8;
+  input.maxLength = 256;
+  input.required = true;
+  label.append(caption, input);
+  return [label, input];
+}
+
+// What the buttons of an account open, below its row: a form for the new
+// password, typed twice and never shown, or the confirmation of its removal.
+function accountPanel(kind, name) {
+  if (!accountAction || accountAction.kind !== kind || accountAction.name !== name) return null;
+  const close = () => setAccountAction(null);
+  const notice = document.createElement('p');
+  notice.className = 'message error';
+  notice.hidden = true;
+  const fail = text => {
+    notice.textContent = text;
+    notice.hidden = false;
+    finishButtonFeedback(false);
+  };
+  if (accountAction.action === 'password') {
+    const form = document.createElement('form');
+    form.className = 'account-action';
+    const [first, password] = passwordInput('Nueva contrasena');
+    const [second, repeated] = passwordInput('Repite la contrasena');
+    const hint = document.createElement('small');
+    hint.textContent = 'Minimo 8 caracteres.';
+    const save = document.createElement('button');
+    save.type = 'submit';
+    save.textContent = 'Guardar';
+    const actions = document.createElement('div');
+    actions.className = 'account-buttons';
+    actions.append(save, accountButton('Cancelar', 'secondary', close));
+    form.append(first, second, hint, notice, actions);
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (password.value !== repeated.value) {
+        fail('Las contrasenas no coinciden. No se ha realizado ningun cambio.');
+        return;
+      }
+      try {
+        const state = await api(`/api/${kind}/${name}/password`, 'POST', { password: password.value });
+        accountAction = null;
+        render(state);
+        message('Contrasena actualizada.');
+      } catch (error) { fail(error.message); }
+    });
+    return form;
+  }
+  const panel = document.createElement('div');
+  panel.className = 'account-action';
+  const warning = document.createElement('p');
+  warning.textContent = ACCOUNT_TEXTS[kind].removal;
+  const actions = document.createElement('div');
+  actions.className = 'account-buttons';
+  actions.append(accountButton('Eliminar', 'danger', async () => {
+    try {
+      const state = await api(`/api/${kind}/${name}`, 'DELETE');
+      accountAction = null;
+      render(state);
+      message(ACCOUNT_TEXTS[kind].removed);
+    } catch (error) { fail(error.message); }
+  }), accountButton('Cancelar', 'secondary', close));
+  panel.append(warning, notice, actions);
+  return panel;
+}
+
+function accountRow(kind, name, details, passwordLabel) {
+  const row = document.createElement('li');
+  const open = action => () => setAccountAction({ kind, name, action });
+  row.append(details, accountButton(passwordLabel, '', open('password')), accountButton('Eliminar', 'danger', open('delete')));
+  const panel = accountPanel(kind, name);
+  if (panel) row.append(panel);
+  return row;
 }
 
 function renderAdmins(names) {
@@ -549,38 +736,70 @@ function renderAdmins(names) {
   list.replaceChildren();
   $('#admins-empty').hidden = names.length > 0;
   for (const name of names) {
-    const row = document.createElement('li');
     const title = document.createElement('strong');
+    title.setAttribute('data-i18n-ignore', '');
     title.textContent = name;
-    const rotate = document.createElement('button');
-    rotate.type = 'button';
-    rotate.textContent = 'Cambiar contrasena';
-    rotate.addEventListener('click', async () => {
-      const password = prompt(`Nueva contrasena para ${name} (8 caracteres minimo):`);
-      if (password === null) return;
-      const confirmation = prompt(`Confirma la nueva contrasena para ${name}:`);
-      if (confirmation === null) return;
-      if (password !== confirmation) {
-        message('Las contrasenas no coinciden. No se ha realizado ningun cambio.', true);
-        return;
-      }
-      try {
-        render(await api(`/api/admins/${name}/password`, 'POST', { password }));
-        message('Contrasena actualizada.');
-      } catch (error) { message(error.message, true); }
-    });
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'danger';
-    remove.textContent = 'Eliminar';
-    remove.addEventListener('click', async () => {
-      if (!confirm(`Eliminar el administrador ${name}?`)) return;
-      try { render(await api(`/api/admins/${name}`, 'DELETE')); message('Administrador eliminado.'); }
-      catch (error) { message(error.message, true); }
-    });
-    row.append(title, rotate, remove);
-    list.append(row);
+    list.append(accountRow('admins', name, title, 'Cambiar contrasena'));
   }
+}
+
+function renderUsers(state) {
+  const users = $('#users');
+  users.replaceChildren();
+  $('#users-empty').hidden = state.users.length > 0;
+  for (const name of state.users) {
+    const details = document.createElement('div');
+    details.className = 'user-details';
+    const title = document.createElement('strong');
+    title.setAttribute('data-i18n-ignore', '');
+    title.textContent = name;
+    details.append(title);
+    const permitted = state.settings.shares.filter(share => share.enabled !== false && share.smb_enabled &&
+      (share.smb_users === null || share.smb_users.includes(name)));
+    if (!permitted.length) {
+      const empty = document.createElement('small');
+      empty.textContent = 'Sin recursos autorizados';
+      details.append(empty);
+    }
+    for (const share of permitted) {
+      const access = document.createElement('button');
+      access.type = 'button';
+      access.className = 'user-access';
+      access.textContent = share.read_only ? formatMessage('{name} · lectura', { name: share.name }) : formatMessage('{name} · lectura/escritura', { name: share.name });
+      access.title = formatMessage('Editar permisos de {name}', { name: share.name });
+      access.addEventListener('click', () => {
+        view('resources');
+        openEditor(share.id, share.path, share);
+      });
+      details.append(access);
+    }
+    users.append(accountRow('users', name, details, 'Nueva clave'));
+  }
+}
+
+const SMB_VERSIONS = { SMB2_02: 'SMB 2.0.2', SMB2_10: 'SMB 2.1', SMB3_00: 'SMB 3.0', SMB3_02: 'SMB 3.0.2', SMB3_11: 'SMB 3.1.1' };
+
+// One line per folded card with what it holds now. Numbers and names go in
+// their own element so the fixed words next to them can be translated.
+function renderSummaries(state) {
+  const settings = state.settings;
+  const count = (id, total, one, many, none) => {
+    $(`#${id}-summary-count`).textContent = total ? String(total) : '';
+    $(`#${id}-summary-label`).textContent = !total ? none : total === 1 ? one : many;
+  };
+  count('users', state.users.length, 'usuario', 'usuarios', 'Sin usuarios');
+  count('admins', (state.admins || []).length, 'administrador', 'administradores', '');
+  $('#discovery-summary-name').setAttribute?.('data-i18n-ignore', '');
+  $('#discovery-summary-name').textContent = settings.server_name;
+  $('#discovery-summary-state').textContent = settings.mdns_enabled ? 'Bonjour activado' : 'Bonjour desactivado';
+  const limit = settings.time_machine_max_size_gb || 0;
+  $('#tm-summary').textContent = limit ? formatMessage('{limit} GB', { limit }) : 'Sin limite';
+  $('#permissions-summary-mode').textContent = settings.collaborative_mode !== false ? 'Modo colaborativo' : 'Sin modo colaborativo';
+  $('#permissions-summary-ids').textContent = formatMessage('{uid}:{gid}', { uid: settings.shared_uid ?? 1000, gid: settings.shared_gid ?? 1000 });
+  const low = SMB_VERSIONS[settings.smb_min_protocol], high = SMB_VERSIONS[settings.smb_max_protocol];
+  $('#smb-protocol-summary').textContent = low === high ? low : formatMessage('{low} – {high}', { low, high });
+  $('#nfs-protocol-summary').textContent = (settings.nfs_protocols || ['3']).map(item => formatMessage('NFSv{version}', { version: item })).join(' + ');
+  $('#version').textContent = state.version || '';
 }
 
 function render(state) {
@@ -617,6 +836,9 @@ function render(state) {
   for (const key of treeCache.keys()) {
     if (!state.mounted_folders.includes(key.split('/')[0])) treeCache.delete(key);
   }
+  for (const id of openMounts) {
+    if (!state.mounted_folders.includes(id)) openMounts.delete(id);
+  }
   for (const share of state.settings.shares) {
     if (!share.path) continue;
     const parts = share.path.split('/');
@@ -635,60 +857,37 @@ function render(state) {
     smbUsers.append(label);
   }
   renderMounts();
-  const users = $('#users');
-  users.replaceChildren();
-  $('#users-empty').hidden = state.users.length > 0;
-  for (const name of state.users) {
-    const row = document.createElement('li');
-    const details = document.createElement('div');
-    details.className = 'user-details';
-    const title = document.createElement('strong');
-    title.textContent = name;
-    details.append(title);
-    const permitted = state.settings.shares.filter(share => share.enabled !== false && share.smb_enabled &&
-      (share.smb_users === null || share.smb_users.includes(name)));
-    if (!permitted.length) {
-      const empty = document.createElement('small');
-      empty.textContent = 'Sin recursos autorizados';
-      details.append(empty);
-    }
-    for (const share of permitted) {
-      const access = document.createElement('button');
-      access.type = 'button';
-      access.className = 'user-access';
-      access.textContent = `${share.name} · ${share.read_only ? 'lectura' : 'lectura/escritura'}`;
-      access.title = `Editar permisos de ${share.name}`;
-      access.addEventListener('click', () => {
-        view('resources');
-        openEditor(share.id, share.path, share);
-      });
-      details.append(access);
-    }
-    const rotate = document.createElement('button');
-    rotate.textContent = 'Nueva clave';
-    rotate.type = 'button';
-    rotate.addEventListener('click', async () => {
-      const password = prompt(`Nueva contrasena para ${name} (8 caracteres minimo):`);
-      if (password === null) return;
-      try { render(await api(`/api/users/${name}/password`, 'POST', { password })); message('Contrasena actualizada.'); }
-      catch (error) { message(error.message, true); }
-    });
-    const remove = document.createElement('button');
-    remove.textContent = 'Eliminar';
-    remove.type = 'button';
-    remove.className = 'danger';
-    remove.addEventListener('click', async () => {
-      if (!confirm(`Eliminar acceso SMB de ${name}? Sus archivos no se borraran.`)) return;
-      try { render(await api(`/api/users/${name}`, 'DELETE')); message('Usuario eliminado.'); }
-      catch (error) { message(error.message, true); }
-    });
-    row.append(details, rotate, remove);
-    users.append(row);
-  }
+  renderUsers(state);
+  renderSummaries(state);
 }
 
+// Asks again in place: the first click arms the button for a few seconds,
+// the second one goes ahead.
+function confirmInPlace(button, run) {
+  let armed = null;
+  let label = '';
+  button.addEventListener('click', event => {
+    if (armed) {
+      clearTimeout(armed);
+      armed = null;
+      button.innerHTML = label;
+      button.classList.toggle('armed', false);
+      run(event);
+      return;
+    }
+    label = button.innerHTML;
+    button.textContent = 'Pulsa otra vez para confirmar';
+    button.classList.toggle('armed', true);
+    armed = setTimeout(() => {
+      armed = null;
+      button.innerHTML = label;
+      button.classList.toggle('armed', false);
+    }, 5000);
+  });
+}
+
+// The editor says what saving will do before this is reached.
 async function unpublishShare(share, browseAfter = false) {
-  if (!confirm(`Dejar de publicar ${share.name}? Los archivos del directorio no se borraran.`)) return;
   try {
     const shares = current.settings.shares.filter(item => item !== share);
     const state = await api('/api/settings', 'PUT', { ...current.settings, shares });
@@ -714,21 +913,26 @@ $('#settings-form').addEventListener('submit', async event => {
     message('Elige una subcarpeta del arbol y pulsa Editar para publicarla. No se ha modificado ningun recurso.');
     return;
   }
-  if (current.settings.shares.some(share => share.id === id &&
-      share.name !== editing && overlaps(share.path || '', path))) {
+  const taken = takenProtocols(id, path);
+  if (taken.exclusive || ($('#smb-enabled').checked && taken.smb) || ($('#nfs-enabled').checked && taken.nfs)
+      || ($('#time-machine').checked && taken.any)) {
     editorMessage('Esta ruta se solapa con un recurso existente. Edita o retira el recurso padre o hijo antes de publicarla.', true);
     return;
   }
   const noProtocols = !$('#smb-enabled').checked && !$('#nfs-enabled').checked;
+  if (noProtocols && !existing) {
+    editorMessage('Activa el protocolo que quieres anadir a esta carpeta.', true);
+    return;
+  }
   if (noProtocols) $('#resource-enabled').checked = false;
   const enabled = $('#resource-enabled').checked;
   const smbUsers = [...$('#smb-users').querySelectorAll('input:checked')].map(input => input.value);
   if (enabled && $('#smb-enabled').checked && !$('#smb-guest').checked && !smbUsers.length) {
-    editorMessage('Selecciona un usuario Samba o activa el acceso para invitados sin contrasena. Tambien puedes desactivar Samba si solo quieres NFS.', true);
+    editorMessage('Selecciona un usuario Samba o activa el acceso para invitados sin contrasena. Tambien puedes desactivar Samba si solo quieres NFS.', true, $('#smb-user-field'));
     return;
   }
   if (enabled && $('#nfs-enabled').checked && !$('#clients').value.trim()) {
-    editorMessage('Para publicar por NFS, indica al menos una IP o red CIDR en Clientes NFS permitidos (por ejemplo, 192.168.0.0/24).', true);
+    editorMessage('Para publicar por NFS, indica al menos una IP o red CIDR en Clientes NFS permitidos (por ejemplo, 192.168.0.0/24).', true, $('#clients'));
     return;
   }
   const base = {
@@ -785,7 +989,8 @@ $('#nfs-protocol-form').addEventListener('submit', async event => {
   }
   try {
     render(await api('/api/settings', 'PUT', { ...current.settings, nfs_protocols: protocols }));
-    message(`Protocolos NFS actualizados: ${protocols.map(item => `NFSv${item}`).join(' + ')}.`);
+    const protocolLabels = protocols.map(item => formatMessage('NFSv{version}', { version: item })).join(' + ');
+    message(formatMessage('Protocolos NFS actualizados: {protocols}.', { protocols: protocolLabels }));
   } catch (error) { message(error.message, true); }
 });
 $('#discovery-form').addEventListener('submit', async event => {
@@ -816,7 +1021,7 @@ $('#time-machine-form').addEventListener('submit', async event => {
   const limit = $('#tm-limit-enabled').checked ? Number($('#tm-limit-gb').value) : 0;
   try {
     render(await api('/api/settings', 'PUT', { ...current.settings, time_machine_max_size_gb: limit }));
-    message(limit ? `Limite Time Machine actualizado a ${limit} GB.` : 'Los destinos Time Machine quedan sin limite anunciado.');
+    message(limit ? formatMessage('Limite Time Machine actualizado a {limit} GB.', { limit }) : 'Los destinos Time Machine quedan sin limite anunciado.');
   } catch (error) { message(error.message, true); }
 });
 $('#tm-limit-enabled').addEventListener('change', event => {
@@ -826,11 +1031,14 @@ $('#tm-limit-enabled').addEventListener('change', event => {
 $('#share-all').addEventListener('change', event => {
   if (!activeTarget || activeTarget.path) return;
   const id = activeTarget.id;
-  if (event.target.checked && current.settings.shares.some(share => share.id === id && !!share.path)) {
+  const taken = takenProtocols(id, '');
+  if (event.target.checked && (taken.exclusive || (taken.smb && taken.nfs))) {
     event.target.checked = false;
     message('Retira primero los recursos de las subcarpetas antes de compartir todo el montaje.', true);
     return;
   }
+  showInheritance();
+  showProtocolOptions();
   showRootMode();
   renderMounts();
 });
@@ -839,22 +1047,18 @@ $('#smb-guest').addEventListener('change', event => {
   showSmbAccess();
 });
 $('#smb-users').addEventListener('change', showSmbAccess);
+// What was asked for is being fixed: the note next to the field goes away.
+$('#settings-form').addEventListener('input', () => { if (invalidField) editorMessage(''); });
 $('#smb-enabled').addEventListener('change', event => {
   if (!event.target.checked) {
     $('#smb-guest').checked = false;
     $('#time-machine').checked = false;
   }
-  if (!$('#smb-enabled').checked && !$('#nfs-enabled').checked) $('#resource-enabled').checked = false;
+  syncResourceState();
   showProtocolOptions();
 });
 $('#nfs-enabled').addEventListener('change', () => {
-  if ($('#nfs-enabled').checked && $('#time-machine').checked) {
-    $('#nfs-enabled').checked = false;
-    editorMessage('No se puede activar NFS mientras Time Machine esta activo. Time Machine necesita un recurso exclusivo de Samba, con escritura, usuario autenticado y sin NFS.', true);
-    showProtocolOptions();
-    return;
-  }
-  if (!$('#smb-enabled').checked && !$('#nfs-enabled').checked) $('#resource-enabled').checked = false;
+  syncResourceState();
   showProtocolOptions();
 });
 $('#time-machine').addEventListener('change', () => {
@@ -862,7 +1066,8 @@ $('#time-machine').addEventListener('change', () => {
     $('#time-machine').checked = false;
     editorMessage('No se puede activar Time Machine mientras NFS esta activo. Usa una carpeta exclusiva de Samba, con escritura, usuario autenticado y sin NFS.', true);
   }
-  showSmbAccess();
+  syncResourceState();
+  showProtocolOptions();
 });
 $('#resource-enabled').addEventListener('change', () => {
   if ($('#resource-enabled').checked && !$('#smb-enabled').checked && !$('#nfs-enabled').checked) {
@@ -872,9 +1077,9 @@ $('#resource-enabled').addEventListener('change', () => {
   showResourceMode();
   showNfsMapping();
 });
-$('#delete-resource').addEventListener('click', async event => {
+confirmInPlace($('#delete-resource'), async event => {
   const share = current.settings.shares.find(item => item.name === editing);
-  if (!share || !confirm(`Eliminar la configuracion de ${share.name}? La carpeta y todos sus archivos se conservaran.`)) return;
+  if (!share) return;
   startButtonFeedback(event.currentTarget);
   try {
     const shares = current.settings.shares.filter(item => item.name !== share.name);
@@ -885,8 +1090,7 @@ $('#delete-resource').addEventListener('click', async event => {
   } catch (error) { message(error.message, true); }
 });
 showProtocolOptions();
-$('#migrate-nfs').addEventListener('click', async () => {
-  if (!confirm('Activar NFSv3? Cambia la ruta de montaje a /shares/..., requiere vers=3,nolock,port=2049,mountport=2049 y no ofrece NLM ni Kerberos.')) return;
+confirmInPlace($('#migrate-nfs'), async () => {
   try {
     render(await api('/api/settings', 'PUT', { ...current.settings, nfs_backend: 'unfs3-v3' }));
     message('NFSv3 activado. Comprueba cada recurso desde un cliente antes de confiarle datos.');
@@ -899,7 +1103,7 @@ for (const service of ['smb', 'nfs']) {
       render(await api('/api/settings', 'PUT', {
         ...current.settings, [`${service}_service_enabled`]: enabled
       }));
-      message(`${service.toUpperCase()} ${enabled ? 'activado' : 'desactivado'} sin eliminar sus recursos.`);
+      message(enabled ? formatMessage('{service} activado sin eliminar sus recursos.', { service: service.toUpperCase() }) : formatMessage('{service} desactivado sin eliminar sus recursos.', { service: service.toUpperCase() }));
     } catch (error) { event.target.checked = !enabled; message(error.message, true); }
   });
 }
@@ -912,6 +1116,17 @@ function view(name) {
     else $(`#tab-${item}`).removeAttribute('aria-current');
   }
 }
+// Settings cards are folded until clicked, like the resources.
+for (const panel of document.querySelectorAll?.('.fold') || []) {
+  const body = panel.querySelector('.fold-body');
+  const toggle = panel.querySelector('.tree-expand');
+  panel.querySelector('.fold-head').addEventListener('click', () => {
+    const open = body.hidden;
+    body.hidden = !open;
+    panel.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+  });
+}
 $('#tab-resources').addEventListener('click', () => view('resources'));
 $('#tab-settings').addEventListener('click', () => view('settings'));
 
@@ -922,7 +1137,7 @@ $('#user-form').addEventListener('submit', async event => {
     render(await api('/api/users', 'POST', { name, password: $('#password').value }));
     $('#username').value = '';
     $('#password').value = '';
-    message(`Usuario SMB ${name} creado. Asignale un recurso desde Recursos > Editar.`);
+    message(formatMessage('Usuario SMB {name} creado. Asignale un recurso desde Recursos > Editar.', { name }));
   } catch (error) { message(error.message, true); }
 });
 
@@ -933,7 +1148,7 @@ $('#admin-form').addEventListener('submit', async event => {
     render(await api('/api/admins', 'POST', { name, password: $('#admin-password').value }));
     $('#admin-username').value = '';
     $('#admin-password').value = '';
-    message(`Administrador ${name} creado.`);
+    message(formatMessage('Administrador {name} creado.', { name }));
   } catch (error) { message(error.message, true); }
 });
 

@@ -32,6 +32,7 @@ ShareCoveX is a container-first file-sharing appliance for Linux hosts and Proxm
 ## Features
 
 - Independent SMB and NFS settings for every published folder.
+- A folder inside a shared one can add the protocol the outer share lacks: a mount shared over SMB with one subfolder also exported over NFS, or the other way round.
 - SMB 2.0.2 through 3.1.1, authenticated users, optional read-only guests, client-network restrictions, encryption, browse visibility, and Time Machine profile.
 - NFSv3 in ordinary Docker and unprivileged Proxmox OCI/LXC environments.
 - NFSv4 through NFS-Ganesha when the runtime can provide real file handles and `CAP_DAC_READ_SEARCH`.
@@ -173,6 +174,12 @@ mount -t nfs -o vers=3,proto=tcp,mountproto=tcp,port=2049,mountport=2049,nolock 
 ```
 
 NFSv4 uses Ganesha when the environment passes the runtime capability probe. Neither profile currently provides Kerberos.
+
+### Folders inside a shared folder
+
+The resource list shows each mount folded; clicking a mount opens its subfolders, and each of them opens the same way. A subfolder of a shared folder shows the protocols that reach it, and its settings offer only the protocol the outer share does not publish. The added protocol has its own settings: NFS clients and identity mapping, or Samba users and write policy.
+
+A protocol that the outer share already publishes cannot be configured again on a subfolder, because the subfolder stays reachable through the outer share with the outer share's rules. To give subfolders different users or write policies for the same protocol, leave the mount unshared and publish its subfolders one by one. A Time Machine destination keeps its folder to itself: nothing is shared inside it, and it cannot sit inside another share.
 
 ### Time Machine
 

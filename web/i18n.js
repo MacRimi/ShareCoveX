@@ -6,6 +6,7 @@ const SHARECOVEX_LANGUAGES = {
 };
 const LANGUAGE_STORAGE_KEY = 'sharecovex-ui-language';
 let translations = {};
+let translationTemplates = [];
 let observer;
 let translating = false;
 const originalText = new WeakMap();
@@ -18,8 +19,51 @@ function supportedLanguage(value) {
 
 function translateText(value) {
   const compact = value.trim().replace(/\s+/g, ' ');
-  if (!compact || !translations[compact]) return value;
-  return value.replace(compact, translations[compact]);
+  if (!compact) return value;
+  const wrap = translated => value.match(/^\s*/)[0] + translated + value.match(/\s*$/)[0];
+  if (Object.hasOwn(translations, compact)) return wrap(translations[compact]);
+  for (const template of translationTemplates) {
+    const match = value.trim().match(template.pattern);
+    if (!match) continue;
+    // One pass keeps captured dollars and placeholder-like text literal.
+    return wrap(template.translation.replace(/\{([a-z][a-z0-9_]*)\}/gi,
+      (token, name) => {
+        if (!Object.hasOwn(template.groups, name)) return token;
+        const captured = match[template.groups[name]];
+        // Error wrappers can contain another catalogued server message. Other
+        // captures (account names, paths, command output) remain literal data.
+        return name === 'error' && captured !== compact ? translateText(captured) : captured;
+      }));
+  }
+  return value;
+}
+
+function compileTranslationTemplates() {
+  const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  translationTemplates = Object.entries(translations).flatMap(([source, translation]) => {
+    const groups = Object.create(null);
+    let cursor = 0;
+    let expression = '';
+    let count = 0;
+    let specificity = 0;
+    for (const match of source.matchAll(/\{([a-z][a-z0-9_]*)\}/gi)) {
+      const literal = source.slice(cursor, match.index).replace(/\s+/g, ' ');
+      expression += escape(literal);
+      specificity += literal.length;
+      const name = match[1];
+      if (Object.hasOwn(groups, name)) expression += `\\k<p${groups[name]}>`;
+      else {
+        groups[name] = ++count;
+        expression += `(?<p${count}>.*?)`;
+      }
+      cursor = match.index + match[0].length;
+    }
+    if (!count) return [];
+    const tail = source.slice(cursor).replace(/\s+/g, ' ');
+    expression += escape(tail);
+    specificity += tail.length;
+    return [{ pattern: new RegExp(`^${expression}$`, 's'), groups, translation, specificity }];
+  }).sort((a, b) => b.specificity - a.specificity);
 }
 
 function translatePage() {
@@ -34,6 +78,7 @@ function translatePage() {
     node.nodeValue = translateText(originalText.get(node));
   }
   for (const element of document.querySelectorAll('[aria-label], [title], [placeholder]')) {
+    if (element.closest('[data-i18n-ignore]')) continue;
     let values = originalAttributes.get(element);
     if (!values) {
       values = {};
@@ -55,6 +100,7 @@ async function setLanguage(locale) {
     if (!response.ok) throw new Error(`Locale ${locale} unavailable`);
     return response.json();
   }).catch(() => ({}));
+  compileTranslationTemplates();
   try { localStorage.setItem(LANGUAGE_STORAGE_KEY, locale); } catch (_) {}
   document.documentElement.lang = locale;
   document.querySelector('#language-select').value = locale;

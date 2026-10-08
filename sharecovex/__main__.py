@@ -16,6 +16,8 @@ from .session import COOKIE, LIFETIME, LoginLimiter, SessionStore
 os.umask(0o077)
 PASSWORD = admin_password()
 ADMINS_FILE = os.environ.get("SHARECOVEX_ADMINS_FILE", "/config/admins.json")
+# Set when the image is built; shown in the panel footer.
+VERSION = os.environ.get("SHARECOVEX_VERSION", "dev")
 if not os.path.isfile(ADMINS_FILE) and (len(PASSWORD) < MIN_PASSWORD or PASSWORD == "replace-with-a-long-random-password"):
     raise SystemExit("Set SHARECOVEX_ADMIN_PASSWORD or /config/admin.password to a unique password "
                      f"of at least {MIN_PASSWORD} characters")
@@ -103,6 +105,7 @@ class Handler(BaseHTTPRequestHandler):
     def _state(self):
         value = runtime.status()
         value["admins"] = admins.names()
+        value["version"] = VERSION
         return value
 
     def _body(self):

@@ -220,6 +220,58 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_settings({"shares": [child]})
 
+    def test_a_folder_inside_a_share_may_add_only_the_missing_protocol(self):
+        parent = share("media", "Media")
+        parent["smb_users"] = ["alice"]
+        child = share("media", "MoviesNfs", smb=False, nfs=True, clients=["192.168.1.0/24"])
+        child["path"] = "movies"
+        value = validate_settings({"shares": [dict(parent), dict(child)]})
+        self.assertIn("[Media]", samba_conf(value))
+        self.assertNotIn("[MoviesNfs]", samba_conf(value))
+        self.assertEqual([line.split()[0] for line in unfs3_exports(value).splitlines() if line.startswith("/")],
+                         ["/shares/media/movies"])
+        # The other way round: an NFS export with one folder also reachable over SMB.
+        outer = share("media", "MediaNfs", smb=False, nfs=True, clients=["192.168.1.0/24"])
+        inner = share("media", "Movies")
+        inner.update(path="movies/classics", smb_users=["alice"])
+        value = validate_settings({"shares": [inner, outer]})
+        self.assertIn("path = /shares/media/movies/classics", samba_conf(value))
+        self.assertIn("/shares/media ", unfs3_exports(value))
+
+    def test_a_folder_inside_a_share_cannot_repeat_its_protocols(self):
+        parent = share("media", "Media", smb=True, nfs=True, clients=["192.168.1.0/24"])
+        for smb, nfs in ((True, False), (False, True), (True, True)):
+            child = share("media", "Child", smb=smb, nfs=nfs, clients=["10.0.0.0/24"] if nfs else None)
+            child["path"] = "movies"
+            with self.assertRaisesRegex(ValueError, "Overlapping"):
+                validate_settings({"shares": [dict(parent), child]})
+        smb_parent = share("media", "Media")
+        dual_child = share("media", "Child", smb=True, nfs=True, clients=["10.0.0.0/24"])
+        dual_child["path"] = "movies"
+        with self.assertRaisesRegex(ValueError, "Overlapping"):
+            validate_settings({"shares": [smb_parent, dual_child]})
+        # Three levels: the innermost has nothing left to add.
+        top = share("media", "Top")
+        middle = share("media", "Middle", smb=False, nfs=True, clients=["10.0.0.0/24"])
+        middle["path"] = "a"
+        bottom = share("media", "Bottom", smb=False, nfs=True, clients=["10.0.0.0/24"])
+        bottom["path"] = "a/b"
+        with self.assertRaisesRegex(ValueError, "Overlapping"):
+            validate_settings({"shares": [top, middle, bottom]})
+
+    def test_a_time_machine_destination_keeps_its_folder_to_itself(self):
+        backup = share("backups", "MacBackup")
+        backup.update(smb_users=["alice"], time_machine=True)
+        inside = share("backups", "Inside", smb=False, nfs=True, clients=["10.0.0.0/24"])
+        inside["path"] = "exports"
+        with self.assertRaisesRegex(ValueError, "Overlapping"):
+            validate_settings({"shares": [dict(backup), inside]})
+        outer = share("media", "MediaNfs", smb=False, nfs=True, clients=["10.0.0.0/24"])
+        nested = share("media", "MacNested")
+        nested.update(path="mac", smb_users=["alice"], time_machine=True)
+        with self.assertRaisesRegex(ValueError, "Overlapping"):
+            validate_settings({"shares": [outer, nested]})
+
     def test_time_machine_requires_explicit_writable_smb_share(self):
         tm = share("backups", "MacBackup")
         tm.update(smb_users=["alice"], time_machine=True)
