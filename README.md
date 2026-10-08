@@ -18,9 +18,6 @@
 
 ShareCoveX is a container-first file-sharing appliance for Linux hosts and Proxmox OCI/LXC. It discovers folders mounted below `/shares`, lets an administrator publish a complete mount or selected non-overlapping subfolders, and generates Samba and NFS configuration without moving the original data.
 
-> [!IMPORTANT]
-> ShareCoveX is a young project. Test backups and restores before trusting important data. The web panel uses HTTP Basic authentication and must stay on a trusted network or behind HTTPS.
-
 ## At a glance
 
 | | |
@@ -39,7 +36,10 @@ ShareCoveX is a container-first file-sharing appliance for Linux hosts and Proxm
 - NFSv3 in ordinary Docker and unprivileged Proxmox OCI/LXC environments.
 - NFSv4 through NFS-Ganesha when the runtime can provide real file handles and `CAP_DAC_READ_SEARCH`.
 - Multiple panel administrators and Samba users with password rotation and removal.
-- Bonjour/mDNS discovery with a configurable server name.
+- Panel sign-in with a session cookie, a limit on failed attempts, and sign-out.
+- Bonjour/mDNS discovery with a configurable server name; Time Machine destinations are announced as backup disks.
+- Supervised services: SMB, NFS, and discovery are started again if they end, and are stopped in order when the container stops.
+- Settings applied without restarting Samba: saving a resource leaves the SMB clients of every other resource connected. The NFS server restarts only when an NFS export changes.
 - Server and share pause controls that preserve configuration.
 - Per-mount and per-subfolder UID/GID, mode, and effective collaborative-write diagnostics.
 - Eight interface languages: English, German, Spanish, French, Italian, Portuguese, Slovak, and Swedish.
@@ -75,7 +75,7 @@ volumes:
 
 Each target below `/shares` must have a unique lowercase identifier. ShareCoveX detects the mount after the container is recreated with the new volume.
 
-Open `http://HOST:8080` when exposing the panel on your LAN, or retain the safer loopback binding from the example and use a trusted reverse proxy or SSH tunnel. Sign in as `admin` with `SHARECOVEX_ADMIN_PASSWORD`; additional panel administrators can be created in Settings.
+Open `http://HOST:8080` when exposing the panel on your LAN, or retain the safer loopback binding from the example and use a trusted reverse proxy or SSH tunnel. Sign in as `admin` with `SHARECOVEX_ADMIN_PASSWORD`; additional panel administrators can be created in Settings. Passwords for administrators and Samba users have at least 8 characters. A session ends after 30 minutes without activity, after 12 hours, on sign-out, or when the password of its administrator changes. Five failed sign-ins from one address within five minutes block that address for one minute, and for longer each time it happens again.
 
 ### Docker Compose example
 
@@ -85,6 +85,7 @@ services:
     image: ghcr.io/macrimi/sharecovex:latest
     container_name: sharecovex
     restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       SHARECOVEX_ADMIN_PASSWORD: "replace-with-a-unique-password"
     ports:
@@ -175,7 +176,19 @@ NFSv4 uses Ganesha when the environment passes the runtime capability probe. Nei
 
 ### Time Machine
 
-A Time Machine destination must be a dedicated writable SMB-only resource with at least one authenticated Samba user, no guests, and no NFS. ShareCoveX passes the configured maximum size to Samba so macOS can recycle backups. This is not a host-filesystem quota; enforce a hard limit in the host dataset or volume as well.
+A Time Machine destination must be a dedicated writable SMB-only resource with at least one authenticated Samba user, no guests, and no NFS. ShareCoveX passes the configured maximum size to Samba so macOS can recycle backups: a general size in Settings, and optionally a different one for each destination. This is not a host-filesystem quota; enforce a hard limit in the host dataset or volume as well.
+
+Each enabled destination is announced over Bonjour as a backup disk (`_adisk._tcp`), so it appears in the Time Machine settings of the Macs on the network. The folder must sit on a filesystem that keeps extended attributes; the panel checks this when a destination is enabled and shows a notice on any published folder that lacks them.
+
+## Operation
+
+The services are watched every few seconds whether or not the panel is open. One that ends is started again, at most once every 30 seconds, and the reason is shown on its card in the panel.
+
+Stopping the container ends discovery, NFS, and SMB in that order and waits up to 20 seconds for them, so Samba closes its clients and databases before the container exits. The Compose examples set `stop_grace_period: 30s` to leave room for it.
+
+`GET /healthz` answers without a session: `200` while the services are being watched, `503` once the container is stopping. The image declares it as its `HEALTHCHECK`.
+
+Bonjour is announced on the interface that carries the default route.
 
 ## Upgrades and backups
 
@@ -192,7 +205,7 @@ Before changing major versions, back up `/config` and verify that all original m
 
 ## Security
 
-- Never expose the HTTP panel directly to the Internet.
+- Never expose the HTTP panel directly to the Internet. The panel speaks plain HTTP; put it behind an HTTPS reverse proxy that sets `X-Forwarded-Proto: https` so the session cookie is marked `Secure`.
 - Restrict SMB/NFS ports at the host firewall to trusted networks.
 - Use explicit NFS client networks and understand that AUTH_SYS trusts client-provided IDs.
 - Prefer authenticated SMB over guest access for private data.

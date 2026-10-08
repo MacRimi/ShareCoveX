@@ -29,6 +29,20 @@ setActionContent(deleteResourceButton, 'delete', deleteResourceButton.textConten
 const overlaps = (left, right) => !left || !right || left === right || left.startsWith(right + '/') || right.startsWith(left + '/');
 const treeKey = (id, path) => `${id}/${path}`;
 const routePath = (id, path) => `/shares/${id}${path ? '/' + path : ''}`;
+const permissionsText = access => `UID:GID ${access.uid}:${access.gid} · ${access.mode} · ${access.writable ? 'Compatible con escritura' : `Sin escritura para ${access.shared_uid}:${access.shared_gid}`}`;
+// A fixed sentence in its own element, so the language catalogue can match it.
+function appendPermissions(parent, access) {
+  const permissions = document.createElement('small');
+  permissions.className = `route-permissions ${access.writable ? 'writable' : 'not-writable'}`;
+  permissions.textContent = permissionsText(access);
+  parent.append(permissions);
+  if (access.xattr === false) {
+    const note = document.createElement('small');
+    note.className = 'route-permissions not-writable';
+    note.textContent = 'Sin atributos extendidos: macOS y Time Machine los necesitan.';
+    parent.append(note);
+  }
+}
 
 ['password', 'admin-password'].forEach(id => {
   const button = $(`[data-password-target="${id}"]`);
@@ -94,8 +108,13 @@ async function api(path, method = 'GET', body, retry = true) {
       cache: 'no-store'
     });
     const result = await response.json();
+    if (response.status === 401) {
+      showLogin();
+      throw new Error('Inicia sesion para continuar.');
+    }
     if (!response.ok) throw new Error(result.error || 'Error del servidor');
     if (method !== 'GET') finishButtonFeedback(true);
+    if (result.signed_out) showLogin();
     return result;
   } catch (error) {
     if (method !== 'GET') finishButtonFeedback(false);
@@ -111,6 +130,25 @@ async function api(path, method = 'GET', body, retry = true) {
     }
     throw error;
   }
+}
+
+let signedIn = false;
+
+function showLogin(text = '') {
+  signedIn = false;
+  $('#panel').hidden = true;
+  $('#logout').hidden = true;
+  $('#login-view').hidden = false;
+  const notice = $('#login-message');
+  notice.textContent = text;
+  notice.hidden = !text;
+}
+
+function showPanel() {
+  signedIn = true;
+  $('#login-view').hidden = true;
+  $('#panel').hidden = false;
+  $('#logout').hidden = false;
 }
 
 function scheduleStateRecovery() {
@@ -198,6 +236,7 @@ function showSmbAccess() {
   $('#smb-user-field').hidden = !$('#smb-enabled').checked;
   $('#smb-guest-hint').hidden = !guest;
   $('#read-only').disabled = guest && !selectedUsers;
+  $('#tm-share-limit-field').hidden = !$('#time-machine').checked;
   if (guest) {
     $('#time-machine').checked = false;
     if (!selectedUsers) $('#read-only').checked = true;
@@ -277,6 +316,7 @@ function openEditor(id, path, share) {
     $('#nfs-gid').value = share.nfs_gid ?? '';
     $('#nfs-insecure').checked = share.nfs_insecure;
     $('#time-machine').checked = share.time_machine;
+    $('#tm-share-limit').value = share.time_machine_max_size_gb || '';
     $('#smb-guest').checked = share.smb_guest === true;
   }
   for (const input of $('#smb-users').querySelectorAll('input')) {
@@ -308,11 +348,7 @@ function renderRoute(id, path, parent, root = false, browsingRoot = false) {
   if (leaf) detail.textContent += ' · Sin subcarpetas';
   label.append(title, detail);
   if (root && share && current.mount_permissions?.[id]) {
-    const access = current.mount_permissions[id];
-    const permissions = document.createElement('small');
-    permissions.className = `route-permissions ${access.writable ? 'writable' : 'not-writable'}`;
-    permissions.textContent = `UID:GID ${access.uid}:${access.gid} · ${access.mode} · ${access.writable ? 'Compatible con escritura' : `Sin escritura para ${access.shared_uid}:${access.shared_gid}`}`;
-    label.append(permissions);
+    appendPermissions(label, current.mount_permissions[id]);
   }
   const parentPath = path.split('/').slice(0, -1).join('/');
   const parentTree = !root && treeCache.get(treeKey(id, parentPath));
@@ -448,12 +484,7 @@ function renderPublishedRoutes(id, parent) {
     name.textContent = `Nombre en red: ${share.name}`;
     details.append(path, name);
     const access = current.share_permissions?.[treeKey(id, share.path)];
-    if (access) {
-      const permissions = document.createElement('small');
-      permissions.className = `route-permissions ${access.writable ? 'writable' : 'not-writable'}`;
-      permissions.textContent = `UID:GID ${access.uid}:${access.gid} · ${access.mode} · ${access.writable ? 'Compatible con escritura' : `Sin escritura para ${access.shared_uid}:${access.shared_gid}`}`;
-      details.append(permissions);
-    }
+    if (access) appendPermissions(details, access);
     const protocols = document.createElement('div');
     protocols.className = 'route-badges published-route-protocols';
     if (share.enabled === false) {
@@ -525,7 +556,7 @@ function renderAdmins(names) {
     rotate.type = 'button';
     rotate.textContent = 'Cambiar contrasena';
     rotate.addEventListener('click', async () => {
-      const password = prompt(`Nueva contrasena para ${name} (6 caracteres minimo):`);
+      const password = prompt(`Nueva contrasena para ${name} (8 caracteres minimo):`);
       if (password === null) return;
       const confirmation = prompt(`Confirma la nueva contrasena para ${name}:`);
       if (confirmation === null) return;
@@ -535,7 +566,7 @@ function renderAdmins(names) {
       }
       try {
         render(await api(`/api/admins/${name}/password`, 'POST', { password }));
-        message('Contrasena actualizada. Si era tu cuenta actual, vuelve a iniciar sesion con la nueva clave.');
+        message('Contrasena actualizada.');
       } catch (error) { message(error.message, true); }
     });
     const remove = document.createElement('button');
@@ -553,7 +584,9 @@ function renderAdmins(names) {
 }
 
 function render(state) {
+  if (state.signed_out) return;
   current = state;
+  showPanel();
   serviceStatus(state);
   $('#environment-badge').textContent = state.environment?.type === 'lxc' ? 'OCI container' : 'Docker container';
   $('#server-name').value = state.settings.server_name;
@@ -578,6 +611,9 @@ function render(state) {
     ? 'Este entorno permite NFSv4 con Ganesha.'
     : 'NFSv4 no esta disponible con los permisos actuales. Usa el perfil avanzado; NFSv3 continua disponible.';
   renderAdmins(state.admins || []);
+  const ignored = state.ignored_mounts || [];
+  $('#ignored-mounts').hidden = !ignored.length;
+  $('#ignored-mount-names').textContent = ignored.join(', ');
   for (const key of treeCache.keys()) {
     if (!state.mounted_folders.includes(key.split('/')[0])) treeCache.delete(key);
   }
@@ -632,7 +668,7 @@ function render(state) {
     rotate.textContent = 'Nueva clave';
     rotate.type = 'button';
     rotate.addEventListener('click', async () => {
-      const password = prompt(`Nueva contrasena para ${name} (6 caracteres minimo):`);
+      const password = prompt(`Nueva contrasena para ${name} (8 caracteres minimo):`);
       if (password === null) return;
       try { render(await api(`/api/users/${name}/password`, 'POST', { password })); message('Contrasena actualizada.'); }
       catch (error) { message(error.message, true); }
@@ -713,7 +749,8 @@ $('#settings-form').addEventListener('submit', async event => {
     nfs_insecure: $('#nfs-insecure').checked,
     smb_users: smbUsers,
     smb_guest: $('#smb-guest').checked,
-    time_machine: $('#time-machine').checked
+    time_machine: $('#time-machine').checked,
+    time_machine_max_size_gb: $('#time-machine').checked ? Number($('#tm-share-limit').value) || 0 : 0
   };
   if (noProtocols && existing) Object.assign(base, existing, { name: $('#name').value, enabled: false });
   const previous = current.settings.shares.find(item => item.name === editing);
@@ -825,6 +862,7 @@ $('#time-machine').addEventListener('change', () => {
     $('#time-machine').checked = false;
     editorMessage('No se puede activar Time Machine mientras NFS esta activo. Usa una carpeta exclusiva de Samba, con escritura, usuario autenticado y sin NFS.', true);
   }
+  showSmbAccess();
 });
 $('#resource-enabled').addEventListener('change', () => {
   if ($('#resource-enabled').checked && !$('#smb-enabled').checked && !$('#nfs-enabled').checked) {
@@ -899,5 +937,21 @@ $('#admin-form').addEventListener('submit', async event => {
   } catch (error) { message(error.message, true); }
 });
 
-api('/api/state').then(render).catch(error => message(error.message, true));
-setInterval(() => api('/api/state').then(serviceStatus).catch(() => {}), 10000);
+// The sign-in form is sent by the browser, not from here: that is what lets
+// it offer to remember the password. The answer comes back in the address.
+const loginNotice = search => ({
+  failed: 'Usuario o contrasena incorrectos',
+  wait: 'Demasiados intentos. Espera unos minutos antes de volver a probar.'
+})[new URLSearchParams(search).get('login')] || '';
+const pendingLoginNotice = loginNotice(location.search);
+if (location.search) history.replaceState(null, '', location.pathname);
+$('#logout').addEventListener('click', async () => {
+  try { await api('/api/logout', 'POST', {}); } catch (_) {}
+  showLogin();
+});
+
+api('/api/state').then(render).catch(error => {
+  if (signedIn) message(error.message, true);
+  else if (pendingLoginNotice) showLogin(pendingLoginNotice);
+});
+setInterval(() => { if (signedIn) api('/api/state').then(serviceStatus).catch(() => {}); }, 10000);

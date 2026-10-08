@@ -30,4 +30,7 @@ RUN mkdir -p /config /shares /run/samba /run/ganesha /run/rpcbind /var/lib/samba
     && ln -sf /proc/mounts /etc/mtab
 EXPOSE 8080 445 2049 20048
 VOLUME ["/config"]
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4)"]
 ENTRYPOINT ["/usr/bin/tini", "--", "python3", "-m", "sharecovex"]

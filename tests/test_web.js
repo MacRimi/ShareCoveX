@@ -37,6 +37,9 @@ const context = vm.createContext({
     return Promise.resolve({ ok: false, json: async () => ({ error: 'simulated rejection' }) });
   },
   setInterval() {},
+  URLSearchParams,
+  location: { search: '', pathname: '/' },
+  history: { replaceState() {} },
   setTimeout() { return 1; },
   clearTimeout() {},
 });
@@ -80,8 +83,8 @@ async function submit() {
   assert.match(fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8'),
     /id="username"[^>]*pattern="\[A-Za-z\]/);
   assert.match(fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8'),
-    /id="password"[^>]*minlength="6"/);
-  assert.match(source, /Nueva contrasena para.*6 caracteres minimo/);
+    /id="password"[^>]*minlength="8"/);
+  assert.match(source, /Nueva contrasena para.*8 caracteres minimo/);
   assert.match(source, /Confirma la nueva contrasena para/);
   assert.match(source, /Las contrasenas no coinciden/);
   element('#server-name').value = 'Cove NAS';
@@ -239,5 +242,81 @@ async function submit() {
   assert.equal(unshared.enabled, false);
   assert.equal(unshared.smb_enabled, false);
   assert.equal(unshared.nfs_enabled, false);
-  process.stdout.write('PASS: resource pausing, protocol panels, publication transitions and SMB guest access\n');
+  // Per-destination Time Machine size travels with the resource and only with Time Machine.
+  vm.runInContext('current.settings.shares = []; editing = null; activeTarget = {id: "backups", path: ""};', context);
+  element('#resource-enabled').checked = true;
+  element('#smb-enabled').checked = true;
+  element('#nfs-enabled').checked = false;
+  element('#smb-guest').checked = false;
+  element('#read-only').checked = false;
+  element('#time-machine').checked = true;
+  element('#tm-share-limit').value = '300';
+  element('#share-all').checked = true;
+  element('#smb-users').querySelectorAll = () => [{ value: 'pedro' }];
+  sent = undefined;
+  await submit();
+  const destination = JSON.parse(sent.options.body).shares[0];
+  assert.equal(destination.time_machine, true);
+  assert.equal(destination.time_machine_max_size_gb, 300);
+  vm.runInContext('current.settings.shares = []; editing = null; activeTarget = {id: "backups", path: ""};', context);
+  element('#resource-enabled').checked = true;
+  element('#smb-enabled').checked = true;
+  element('#share-all').checked = true;
+  element('#time-machine').checked = false;
+  element('#tm-share-limit').value = '300';
+  sent = undefined;
+  await submit();
+  assert.equal(JSON.parse(sent.options.body).shares[0].time_machine, false);
+  assert.equal(JSON.parse(sent.options.body).shares[0].time_machine_max_size_gb, 0);
+
+  // A folder without extended attributes says so in a sentence of its own.
+  const details = node();
+  vm.runInContext('appendPermissions', context)(details, { uid: 1000, gid: 1000, mode: '2770', writable: true, xattr: true });
+  assert.equal(details.children.length, 1);
+  vm.runInContext('appendPermissions', context)(details, { uid: 1000, gid: 1000, mode: '2770', writable: true, xattr: false });
+  assert.equal(details.children[2].textContent, 'Sin atributos extendidos: macOS y Time Machine los necesitan.');
+
+  // Sign-in: the panel stays hidden until the server accepts a session.
+  const answer = (status, body) => (url, options) => {
+    sent = { url, options };
+    return Promise.resolve({ ok: status < 400, status, json: async () => body });
+  };
+  vm.runInContext('showPanel()', context);
+  assert.equal(element('#panel').hidden, false);
+  assert.equal(element('#login-view').hidden, true);
+  assert.equal(element('#logout').hidden, false);
+  context.fetch = answer(401, { error: 'Sesion no iniciada' });
+  await assert.rejects(vm.runInContext("api('/api/state')", context), /Inicia sesion para continuar/);
+  assert.equal(element('#panel').hidden, true);
+  assert.equal(element('#login-view').hidden, false);
+  assert.equal(element('#logout').hidden, true);
+  assert.equal(vm.runInContext('signedIn', context), false);
+
+  // The browser sends the form itself, so it can offer to remember the password.
+  assert.equal(element('#login-form').listeners.submit, undefined);
+  assert.match(markup, /<form id="login-form"[^>]*method="post" action="\/login"/);
+  assert.match(markup, /id="login-name" name="username" autocomplete="username"/);
+  assert.match(markup, /id="login-password" name="password" type="password" autocomplete="current-password"/);
+  const notice = vm.runInContext('loginNotice', context);
+  assert.equal(notice('?login=failed'), 'Usuario o contrasena incorrectos');
+  assert.match(notice('?login=wait'), /Demasiados intentos/);
+  assert.equal(notice(''), '');
+  assert.equal(notice('?login=anything'), '');
+  vm.runInContext('showLogin(loginNotice("?login=failed"))', context);
+  assert.equal(element('#login-message').textContent, 'Usuario o contrasena incorrectos');
+  assert.equal(element('#login-message').hidden, false);
+  assert.equal(element('#panel').hidden, true);
+  vm.runInContext('showPanel()', context);
+
+  context.fetch = answer(200, { signed_out: true });
+  await element('#logout').listeners.click();
+  assert.equal(sent.url, '/api/logout');
+  assert.equal(element('#panel').hidden, true);
+  assert.equal(element('#login-view').hidden, false);
+  assert.match(markup, /<main id="panel" hidden>/);
+  // The logo is drawn, not typed: it must not depend on a font of the visitor's system.
+  assert.match(markup, /<div class="mark" aria-label="ShareCoveX"><svg class="mark-letters" aria-hidden="true" viewBox="[\d. ]+"><path /);
+  assert.doesNotMatch(markup, />SCX</);
+  assert.doesNotMatch(source, /Authorization|btoa\(/);
+  process.stdout.write('PASS: resource pausing, protocol panels, publication transitions, SMB guest access, Time Machine sizes and sign-in\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

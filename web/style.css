@@ -10,8 +10,8 @@ button.is-saved { background:#007f79 !important; color:#fff !important; }
 button.is-failed { background:#fff2ef !important; color:var(--warn) !important; box-shadow:inset 0 0 0 1px #eb9f95; }
 button:disabled { cursor:not-allowed; }
 .masthead { max-width:1240px; margin:auto; padding:27px 32px; display:flex; align-items:center; gap:14px; border-bottom:1px solid var(--line); }
-.mark { width:50px; height:50px; border-radius:15px; background:var(--ink); color:#fff; font-size:18px; font-weight:800; display:grid; place-items:center; letter-spacing:-2px; position:relative; }
-.mark-letters { color:#fff; transform:translateY(-2px); }.mark-dots { position:absolute; left:50%; bottom:-3px; transform:translateX(-50%); display:flex; gap:5px; }.mark-dots i { display:block; width:7px; height:7px; border-radius:50%; background:#f0a95a; box-shadow:0 0 7px #f0a95a66; }.mark-dots i + i { background:#63ff6b; box-shadow:0 0 7px #63ff6b66; }
+.mark { width:50px; height:50px; border-radius:15px; background:var(--ink); color:#fff; display:grid; place-items:center; position:relative; }
+.mark-letters { width:34px; height:auto; fill:#fff; transform:translateY(-2px); }.mark-dots { position:absolute; left:50%; bottom:-3px; transform:translateX(-50%); display:flex; gap:5px; }.mark-dots i { display:block; width:7px; height:7px; border-radius:50%; background:#f0a95a; box-shadow:0 0 7px #f0a95a66; }.mark-dots i + i { background:#63ff6b; box-shadow:0 0 7px #63ff6b66; }
 .brand { display:flex; flex-direction:column; line-height:1.2; }
 .brand strong { font-size:20px; letter-spacing:-.06em; }
 .brand small { font-size:14px; color:var(--muted); margin-top:5px; }
@@ -144,3 +144,5 @@ button.is-saved { background:#287fdc !important; }.button.is-failed,button.is-fa
   .published-route { padding-left:12px; }
   .published-route-protocols { margin-right:auto; }
 }
+.login { display:grid; place-items:center; padding:56px 18px; }.login-panel { width:min(420px,100%); }.login-panel .message { margin:0; }
+.logout { height:36px; border:1px solid #315f8c; color:#9dcbff; background:#252527; border-radius:100px; padding:0 14px; font-size:12px; font-weight:600; white-space:nowrap; }.logout:hover { background:#2f3033; }

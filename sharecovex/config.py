@@ -19,7 +19,7 @@ SERVER_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,47}$")
 SHARE_FIELDS = {"id", "name", "smb_enabled", "nfs_enabled", "read_only", "nfs_clients"}
 OPTIONAL_FIELDS = {"path", "smb_users", "smb_guest", "time_machine", "export_id", "nfs_read_only",
                    "smb_browseable", "smb_encryption", "smb_clients", "nfs_mapping",
-                   "nfs_uid", "nfs_gid", "nfs_insecure", "enabled"}
+                   "nfs_uid", "nfs_gid", "nfs_insecure", "enabled", "time_machine_max_size_gb"}
 
 
 def admin_password():
@@ -110,6 +110,10 @@ def validate_settings(value):
         if not isinstance(share["name"], str) or not NAME.fullmatch(share["name"]):
             raise ValueError("Share name must start with a letter and use letters, digits, _ or -")
         share["path"] = validate_relative_path(share.get("path", ""))
+        if "%" in share["path"] and share["smb_enabled"] and share.get("enabled", True) is not False:
+            # Samba replaces %U, %H and the like in a path: the share would
+            # point somewhere else than the folder chosen here.
+            raise ValueError("Samba no puede publicar una carpeta cuyo nombre contiene el caracter %")
         key = (share["id"], share["path"])
         if key in paths or share["name"].lower() in names:
             raise ValueError("Share paths and names must be unique")
@@ -184,6 +188,11 @@ def validate_settings(value):
                                            or share["read_only"] or users is None or guest):
             raise ValueError("Time Machine necesita SMB con escritura, sin NFS ni invitados y con usuarios SMB seleccionados. Usa una carpeta exclusiva para las copias.")
         share["time_machine"] = tm
+        # 0 leaves the size announced for this destination to the server-wide setting.
+        tm_share_size = share.get("time_machine_max_size_gb", 0)
+        if type(tm_share_size) is not int or not 0 <= tm_share_size <= 1048576:
+            raise ValueError("El limite de Time Machine debe estar entre 0 y 1048576 GB")
+        share["time_machine_max_size_gb"] = tm_share_size if tm else 0
         browseable = share.get("smb_browseable", True)
         encryption = share.get("smb_encryption", "default")
         if type(browseable) is not bool or encryption not in ("default", "required"):
@@ -259,6 +268,11 @@ def load(path):
         for share in value["shares"]:
             if isinstance(share, dict) and share.get("smb_guest") is True and not share.get("smb_users"):
                 share["read_only"] = True
+            # And SMB paths that Samba would expand: they are paused, not refused,
+            # so the server still starts with the rest of its resources.
+            if (isinstance(share, dict) and isinstance(share.get("path"), str) and "%" in share["path"]
+                    and share.get("smb_enabled") is True):
+                share["enabled"] = False
     if (isinstance(value, dict) and "nfs_backend" not in value and
             isinstance(value.get("shares"), list) and
             any(isinstance(item, dict) and item.get("nfs_enabled") is True
@@ -297,8 +311,10 @@ def samba_conf(value):
              f"  server max protocol = {value.get('smb_max_protocol', DEFAULTS['smb_max_protocol'])}",
              "  disable netbios = yes", "  smb ports = 445",
              "  passdb backend = tdbsam", "  private dir = /config/samba-private",
-             "  state directory = /config/samba-state", "  log file = /dev/stdout",
-             "  max log size = 0", "  vfs objects = catia fruit streams_xattr"]
+             "  state directory = /config/samba-state",
+             # A rejected sign-in is written to the container log with its
+             # user, address and reason; smbd is started with --debug-stdout.
+             "  log level = 1 auth_audit:2", "  vfs objects = catia fruit streams_xattr"]
     for share in value["shares"]:
         if not share["enabled"] or not share["smb_enabled"]:
             continue
@@ -333,16 +349,33 @@ def samba_conf(value):
                                                   for network in networks)]
         if share["time_machine"]:
             lines += ["  fruit:time machine = yes"]
-            if value.get("time_machine_max_size_gb", 0):
-                lines += [f"  fruit:time machine max size = {value['time_machine_max_size_gb']}G"]
+            size = share.get("time_machine_max_size_gb") or value.get("time_machine_max_size_gb", 0)
+            if size:
+                lines += [f"  fruit:time machine max size = {size}G"]
     return "\n".join(lines) + "\n"
 
 
-def avahi_conf(value):
+def samba_sections(text):
+    """The share sections of a generated smb.conf: {share name: its lines}."""
+    sections, name = {}, None
+    for line in text.splitlines():
+        if line.startswith("[") and line.endswith("]"):
+            name = line[1:-1]
+            sections[name] = []
+        elif name is not None:
+            sections[name].append(line)
+    sections.pop("global", None)
+    return sections
+
+
+def avahi_conf(value, interface="eth0"):
+    """`interface` is the one that carries the default route; without one the
+    announcement is left on every interface."""
     host = re.sub(r"[^a-z0-9]+", "-", value["server_name"].lower()).strip("-")
+    allowed = f"allow-interfaces={interface}\n" if interface else ""
     return ("[server]\n"
             f"host-name={host}\n"
-            "use-ipv4=yes\nuse-ipv6=no\nallow-interfaces=eth0\n"
+            f"use-ipv4=yes\nuse-ipv6=no\n{allowed}"
             "enable-dbus=no\n\n[publish]\n"
             "publish-hinfo=no\npublish-workstation=no\n\n"
             "[reflector]\nenable-reflector=no\n")
@@ -354,9 +387,20 @@ def discovery_model(value):
     return "TimeCapsule8,119" if has_time_machine else "Xserve"
 
 
+def time_machine_shares(value):
+    return [share["name"] for share in value["shares"]
+            if share.get("enabled", True) and share["smb_enabled"] and share.get("time_machine", False)]
+
+
 def avahi_service(value):
     name = escape(value["server_name"])
     model = discovery_model(value)
+    # macOS lists a Time Machine destination by itself only when the server
+    # announces its disks: one record per destination, flagged as a backup volume.
+    disks = "".join(f"<txt-record>dk{index}=adVN={escape(share)},adVF=0x82</txt-record>"
+                    for index, share in enumerate(time_machine_shares(value)))
+    adisk = ("  <service><type>_adisk._tcp</type><port>9</port>"
+             f"<txt-record>sys=waMa=0,adVF=0x100</txt-record>{disks}</service>\n") if disks else ""
     return ("<?xml version=\"1.0\" standalone='no'?>\n"
             "<!DOCTYPE service-group SYSTEM \"avahi-service.dtd\">\n"
             "<service-group>\n"
@@ -364,6 +408,7 @@ def avahi_service(value):
             "  <service><type>_smb._tcp</type><port>445</port></service>\n"
             "  <service><type>_device-info._tcp</type><port>0</port>"
             f"<txt-record>model={model}</txt-record></service>\n"
+            f"{adisk}"
             "</service-group>\n")
 
 

@@ -1,18 +1,55 @@
 import ctypes
+import errno
 import json
 import os
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import threading
 import time
 from pathlib import Path
 
-from .config import avahi_conf, avahi_service, ganesha_conf, load, samba_conf, save, unfs3_exports, validate_relative_path, validate_settings, validate_user
+from .config import (SLUG, avahi_conf, avahi_service, ganesha_conf, load, samba_conf, samba_sections, save,
+                     unfs3_exports, validate_relative_path, validate_settings, validate_user)
 
 CONFIG = Path(os.environ.get("SHARECOVEX_CONFIG", "/config"))
 SHARES = Path(os.environ.get("SHARECOVEX_SHARES", "/shares"))
+MIN_PASSWORD = 8
+# Seconds between two looks of the supervisor at the services.
+SUPERVISOR_INTERVAL = 5
+# Time the services have to end on their own when the container stops.
+SHUTDOWN_TIMEOUT = 20
+INTERFACE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
+
+
+def default_interface(route_file="/proc/net/route"):
+    """The interface that carries the default route, or None while there is none."""
+    try:
+        with open(route_file, encoding="utf-8") as stream:
+            for line in stream.readlines()[1:]:
+                fields = line.split()
+                if (len(fields) >= 4 and fields[1] == "00000000" and int(fields[3], 16) & 2
+                        and INTERFACE.fullmatch(fields[0])):
+                    return fields[0]
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def xattr_supported(path):
+    """Whether the filesystem of `path` keeps user extended attributes, which
+    Samba needs for macOS metadata and Time Machine. Nothing is written."""
+    reader = getattr(os, "getxattr", None)
+    if reader is None:
+        return True
+    try:
+        reader(path, "user.sharecovex.probe")
+    except OSError as exc:
+        # A missing attribute means the filesystem keeps them.
+        return exc.errno not in (errno.ENOTSUP, errno.EOPNOTSUPP)
+    return True
 
 
 def container_environment():
@@ -108,6 +145,9 @@ class Runtime:
         self.processes = {}
         self.errors = {}
         self.last_start = {}
+        self.interface = default_interface()
+        self.stopping = threading.Event()
+        self.supervisor = None
         CONFIG.mkdir(parents=True, exist_ok=True)
         for path in ("samba-private", "samba-state"):
             (CONFIG / path).mkdir(mode=0o700, exist_ok=True)
@@ -117,6 +157,12 @@ class Runtime:
         self.sync()
 
     def _load_users(self):
+        # The highest UID ever given to a Samba user. A new user never takes
+        # the UID of a removed one, whose files it would inherit.
+        try:
+            self.last_uid = int((CONFIG / "last-uid").read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            self.last_uid = 0
         if not self.users_file.exists():
             return {}
         with self.users_file.open(encoding="utf-8") as stream:
@@ -136,6 +182,10 @@ class Runtime:
             stream.flush()
             os.fsync(stream.fileno())
         temporary.replace(self.users_file)
+        marker = CONFIG / "last-uid"
+        last = max([getattr(self, "last_uid", 0), *self.users.values()])
+        marker.write_text(f"{last}\n", encoding="utf-8")
+        self.last_uid = last
 
     def _restore_accounts(self):
         import grp
@@ -182,7 +232,8 @@ class Runtime:
         (CONFIG / "smb.conf").write_text(samba_conf(self.settings), encoding="utf-8")
         (CONFIG / "exports").write_text(unfs3_exports(self.settings), encoding="utf-8")
         (CONFIG / "ganesha.conf").write_text(ganesha_conf(self.settings), encoding="utf-8")
-        (CONFIG / "avahi-daemon.conf").write_text(avahi_conf(self.settings), encoding="utf-8")
+        (CONFIG / "avahi-daemon.conf").write_text(
+            avahi_conf(self.settings, getattr(self, "interface", None)), encoding="utf-8")
         services = Path("/etc/avahi/services")
         services.mkdir(parents=True, exist_ok=True)
         service_file = services / "sharecovex.service"
@@ -204,7 +255,17 @@ class Runtime:
             mounted = mountpoints(stream)
         return sorted(entry.name for entry in SHARES.iterdir()
                       if entry.is_dir() and not entry.is_symlink() and str(entry) in mounted
-                      and entry.name != "config")
+                      and entry.name != "config" and SLUG.fullmatch(entry.name))
+
+    def ignored_mounts(self):
+        """Folders mounted below /shares whose name cannot identify a resource."""
+        if not SHARES.is_dir():
+            return []
+        with open("/proc/self/mountinfo", encoding="utf-8") as stream:
+            mounted = mountpoints(stream)
+        return sorted(entry.name for entry in SHARES.iterdir()
+                      if entry.is_dir() and not entry.is_symlink() and str(entry) in mounted
+                      and entry.name != "config" and not SLUG.fullmatch(entry.name))
 
     def directory(self, mount_id, relative=""):
         if mount_id not in self.mounted_folders():
@@ -290,6 +351,7 @@ class Runtime:
             "readable": acl_readable or bits & 5 == 5,
             "writable": acl_writable or bits & 3 == 3,
             "acl_ready": acl_ready,
+            "xattr": xattr_supported(str(directory)),
             "shared_uid": uid, "shared_gid": gid,
             "host_uid": self._mapped_id(uid, "/proc/self/uid_map"),
             "host_gid": self._mapped_id(gid, "/proc/self/gid_map"),
@@ -327,6 +389,13 @@ class Runtime:
                 process.wait()
 
     def _start(self, name, args):
+        if name == "mdns":
+            # A process that ended without cleaning up leaves this file, and
+            # the next one refuses to start while it names a living PID.
+            try:
+                os.unlink("/run/avahi-daemon/pid")
+            except OSError:
+                pass
         try:
             self.processes[name] = subprocess.Popen(args, start_new_session=True)
             self.last_start[name] = time.monotonic()
@@ -334,8 +403,51 @@ class Runtime:
         except OSError as exc:
             self.errors[name] = str(exc)
 
+    def start_supervisor(self, interval=SUPERVISOR_INTERVAL):
+        """Keep the services running whether or not anybody has the panel open."""
+        def watch():
+            while not self.stopping.wait(interval):
+                try:
+                    self.sync()
+                except Exception as exc:  # one failed look must not end the supervisor
+                    print(f"ShareCoveX supervisor: {exc}", flush=True)
+        self.supervisor = threading.Thread(target=watch, name="supervisor", daemon=True)
+        self.supervisor.start()
+
+    def healthy(self):
+        """Whether something is still watching over the services."""
+        return bool(self.supervisor and self.supervisor.is_alive()) and not self.stopping.is_set()
+
+    def shutdown(self, timeout=SHUTDOWN_TIMEOUT):
+        """End every service in order: the container was asked to stop. Samba
+        closes its clients and its databases instead of being killed with
+        files open or a backup half written."""
+        self.stopping.set()
+        with self.lock:
+            running = [process for name in ("mdns", "nfs", "rpcbind", "smb")
+                       if (process := self.processes.pop(name, None)) and process.poll() is None]
+            for process in running:
+                process.terminate()
+            deadline = time.monotonic() + timeout
+            for process in running:
+                try:
+                    process.wait(timeout=max(0.1, deadline - time.monotonic()))
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
     def sync(self):
         with self.lock:
+            stopping = getattr(self, "stopping", None)
+            if stopping is not None and stopping.is_set():
+                return
+            if hasattr(self, "interface"):
+                # The default route may arrive after the container starts.
+                interface = default_interface()
+                if interface and interface != self.interface:
+                    self.interface = interface
+                    (CONFIG / "avahi-daemon.conf").write_text(avahi_conf(self.settings, interface), encoding="utf-8")
+                    self._stop("mdns")
             mounted = set(self.mounted_folders())
             for name in ("smb", "nfs"):
                 selected = [share for share in self.settings["shares"]
@@ -376,7 +488,8 @@ class Runtime:
                         if time.monotonic() - self.last_start.get(name, 0) < 30:
                             continue
                     if name == "smb":
-                        args = ["smbd", "--foreground", "--no-process-group", "-s", str(CONFIG / "smb.conf")]
+                        args = ["smbd", "--foreground", "--no-process-group", "--debug-stdout",
+                                "-s", str(CONFIG / "smb.conf")]
                     elif self.settings["nfs_backend"] == "ganesha-vfs":
                         rpcbind = self.processes.get("rpcbind")
                         if not rpcbind or rpcbind.poll() is not None:
@@ -431,6 +544,7 @@ class Runtime:
                 "settings": self.settings,
                 "users": sorted(self.users),
                 "mounted_folders": mounted,
+                "ignored_mounts": self.ignored_mounts(),
                 "mount_permissions": self.mount_permissions(mounted),
                 "share_permissions": self.share_permissions(),
                 "services": services,
@@ -449,14 +563,21 @@ class Runtime:
             missing = [share["id"] for share in value["shares"] if share["id"] not in mounted]
             if missing:
                 raise ValueError("Folders are not mounted by Docker/OCI: " + ", ".join(missing))
+            already_time_machine = {(share["id"], share["path"]) for share in self.settings["shares"]
+                                    if share.get("time_machine")}
             for share in value["shares"]:
-                self.directory(share["id"], share["path"])
+                directory = self.directory(share["id"], share["path"])
+                if (share["enabled"] and share["time_machine"]
+                        and (share["id"], share["path"]) not in already_time_machine
+                        and not xattr_supported(str(directory))):
+                    raise ValueError("Time Machine necesita atributos extendidos y el sistema de archivos de esta carpeta no los admite")
                 if share["smb_users"] is not None:
                     unknown = set(share["smb_users"]) - set(self.users)
                     if unknown:
                         raise ValueError("Unknown SMB users: " + ", ".join(sorted(unknown)))
-            if (value.get("shared_uid", 1000) != self.settings.get("shared_uid", 1000)
-                    or value.get("shared_gid", 1000) != self.settings.get("shared_gid", 1000)):
+            identity_changed = (value.get("shared_uid", 1000) != self.settings.get("shared_uid", 1000)
+                                or value.get("shared_gid", 1000) != self.settings.get("shared_gid", 1000))
+            if identity_changed:
                 previous_settings = self.settings
                 self.settings = value
                 try:
@@ -471,6 +592,7 @@ class Runtime:
                     if issue:
                         raise ValueError(issue)
             previous = self.settings
+            before = self._rendered(previous)
             save(str(self.config_file), value)
             self.settings = load(str(self.config_file))
             try:
@@ -480,19 +602,74 @@ class Runtime:
                 self.settings = previous
                 self._write_service_configs()
                 raise
-            self._stop("smb")
-            self._stop("nfs")
-            self._stop("mdns")
+            self._apply_changes(before, self._rendered(self.settings), identity_changed)
             self.sync()
+
+    def _rendered(self, settings):
+        """What each service is given to read for these settings."""
+        backend = settings["nfs_backend"]
+        return {"smb": samba_conf(settings),
+                "nfs": (backend, ganesha_conf(settings) if backend == "ganesha-vfs" else unfs3_exports(settings)),
+                "avahi": avahi_conf(settings, getattr(self, "interface", None)),
+                "service": avahi_service(settings)}
+
+    def _running(self, name):
+        process = self.processes.get(name)
+        return process if process and process.poll() is None else None
+
+    def _apply_changes(self, before, after, identity_changed=False):
+        """Tell each running service about its new configuration.
+
+        A service whose configuration did not change is left alone, and Samba
+        and Avahi read theirs again without restarting: saving one resource
+        must not disconnect the clients of every other one nor cut a backup in
+        progress. Starting and stopping what has to run is left to `sync`.
+        """
+        if before["smb"] != after["smb"] and self._running("smb"):
+            if identity_changed:
+                # Open sessions keep the identity they started with.
+                self._stop("smb")
+            else:
+                self._reload_smb(before["smb"], after["smb"])
+        if before["nfs"] != after["nfs"] and self._running("nfs"):
+            # unfsd would read its exports again on SIGHUP, but it does so with
+            # the identity of the last client it served and ends up exporting
+            # nothing. It is restarted instead, and only when an export changed:
+            # NFSv3 keeps no state in the server, so its clients carry on.
+            self._stop("nfs")
+            self._stop("rpcbind")
+        mdns = self._running("mdns")
+        if mdns:
+            if before["avahi"] != after["avahi"]:
+                self._stop("mdns")
+            elif before["service"] != after["service"]:
+                mdns.send_signal(signal.SIGHUP)  # avahi reads its service files again
+
+    def _reload_smb(self, before, after):
+        """Samba reads smb.conf again without dropping anybody, and only the
+        clients of a share that changed or is gone are made to reconnect, so
+        a permission that was taken away stops applying at once."""
+        configuration = "--configfile=" + str(CONFIG / "smb.conf")
+        try:
+            command(["smbcontrol", configuration, "all", "reload-config"])
+            old, new = samba_sections(before), samba_sections(after)
+            for name in old:
+                if new.get(name) != old[name]:
+                    command(["smbcontrol", configuration, "all", "close-share", name])
+        except (RuntimeError, OSError):
+            self._stop("smb")
 
     def add_user(self, name, password):
         name = validate_user(name)
-        if not isinstance(password, str) or not 6 <= len(password) <= 256 or "\n" in password:
-            raise ValueError("Password must contain 6-256 characters without newlines")
+        if (not isinstance(password, str) or not MIN_PASSWORD <= len(password) <= 256
+                or "\n" in password or "\r" in password):
+            raise ValueError(f"Password must contain {MIN_PASSWORD}-256 characters without newlines")
         with self.lock:
             if name.lower() in {existing.lower() for existing in self.users}:
                 raise ValueError("User already exists")
-            uid = max([2000, *self.users.values()]) + 1
+            uid = max([2000, getattr(self, "last_uid", 0), *self.users.values()]) + 1
+            if uid > 59999:
+                raise ValueError("No Samba user IDs are left")
             command(["useradd", "--badname", "-M", "-u", str(uid), "-g", "sharecovex",
                      "-s", "/usr/sbin/nologin", name])
             try:
@@ -505,8 +682,9 @@ class Runtime:
                 raise
 
     def password(self, name, password):
-        if not isinstance(password, str) or not 6 <= len(password) <= 256 or "\n" in password:
-            raise ValueError("Password must contain 6-256 characters without newlines")
+        if (not isinstance(password, str) or not MIN_PASSWORD <= len(password) <= 256
+                or "\n" in password or "\r" in password):
+            raise ValueError(f"Password must contain {MIN_PASSWORD}-256 characters without newlines")
         with self.lock:
             if name not in self.users:
                 raise ValueError("Unknown user")

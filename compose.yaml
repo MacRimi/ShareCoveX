@@ -2,6 +2,7 @@ services:
   sharecovex:
     image: ghcr.io/macrimi/sharecovex:latest
     restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       SHARECOVEX_ADMIN_PASSWORD: ${SHARECOVEX_ADMIN_PASSWORD:?Set a strong password}
     ports:

@@ -10,6 +10,7 @@ from pathlib import Path
 
 ADMIN = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 ITERATIONS = 600_000
+MIN_PASSWORD = 8
 
 
 class AdminStore:
@@ -19,8 +20,8 @@ class AdminStore:
         if self.path.exists():
             self._load()
         else:
-            if len(bootstrap_password) < 6:
-                raise ValueError("La contrasena inicial del administrador debe tener al menos 6 caracteres")
+            if len(bootstrap_password) < MIN_PASSWORD:
+                raise ValueError(f"La contrasena inicial del administrador debe tener al menos {MIN_PASSWORD} caracteres")
             self.data = {"admin": self._hash(bootstrap_password)}
             self._save()
 
@@ -32,8 +33,9 @@ class AdminStore:
 
     @staticmethod
     def _validate_password(password):
-        if not isinstance(password, str) or not 6 <= len(password) <= 256 or "\n" in password or "\r" in password:
-            raise ValueError("La contrasena del administrador debe tener entre 6 y 256 caracteres")
+        if (not isinstance(password, str) or not MIN_PASSWORD <= len(password) <= 256
+                or "\n" in password or "\r" in password):
+            raise ValueError(f"La contrasena del administrador debe tener entre {MIN_PASSWORD} y 256 caracteres")
         return password
 
     @staticmethod
@@ -75,13 +77,17 @@ class AdminStore:
             return sorted(self.data)
 
     def verify(self, name, password):
+        if not isinstance(password, str) or len(password) > 256:
+            return False
         with self.lock:
-            record = self.data.get(name)
-            if not record or not isinstance(password, str):
-                return False
-            digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(record["salt"]),
-                                         record["iterations"])
-            return hmac.compare_digest(digest.hex(), record["hash"])
+            record = self.data.get(name) if isinstance(name, str) else None
+        # An unknown name costs the same work as a wrong password, so the
+        # answer does not tell which administrators exist. The hash is
+        # computed outside the lock: it must not hold up the other requests.
+        known = record or {"salt": "00" * 16, "hash": "", "iterations": ITERATIONS}
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(known["salt"]),
+                                     known["iterations"])
+        return bool(record) and hmac.compare_digest(digest.hex(), record["hash"])
 
     def add(self, name, password):
         with self.lock:

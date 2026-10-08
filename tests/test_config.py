@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from sharecovex.config import DEFAULTS, admin_password, avahi_conf, avahi_service, ganesha_conf, load, nfs_export_id, samba_conf, save, unfs3_exports, validate_settings, validate_user
+from sharecovex.config import DEFAULTS, admin_password, avahi_conf, avahi_service, ganesha_conf, load, nfs_export_id, samba_conf, samba_sections, save, unfs3_exports, validate_settings, validate_user
 
 
 def share(id, name, smb=True, nfs=False, read_only=False, clients=None):
@@ -33,6 +33,8 @@ class ConfigTests(unittest.TestCase):
                                     "collaborative_mode": True, "shared_uid": 1000,
                                     "shared_gid": 1000, "time_machine_max_size_gb": 0})
         self.assertNotIn("[Shared]", samba_conf(DEFAULTS))
+        self.assertIn("  log level = 1 auth_audit:2\n", samba_conf(DEFAULTS))
+        self.assertNotIn("log file", samba_conf(DEFAULTS))
         self.assertNotIn("/shares/", unfs3_exports(DEFAULTS))
 
     def test_nfs_protocol_selection_chooses_the_matching_engine(self):
@@ -240,6 +242,72 @@ class ConfigTests(unittest.TestCase):
         for bad in (-1, 1048577, "500"):
             with self.assertRaises(ValueError):
                 validate_settings({"shares": [], "time_machine_max_size_gb": bad})
+
+    def test_each_time_machine_destination_can_have_its_own_limit(self):
+        first = share("backups", "MacBackup")
+        first.update(path="pedro", smb_users=["pedro"], time_machine=True, time_machine_max_size_gb=300)
+        second = share("backups", "MacAna")
+        second.update(path="ana", smb_users=["ana"], time_machine=True)
+        ordinary = share("media", "Media")
+        ordinary["time_machine_max_size_gb"] = 50
+        value = validate_settings({"shares": [first, second, ordinary], "time_machine_max_size_gb": 750})
+        sections = samba_sections(samba_conf(value))
+        self.assertIn("  fruit:time machine max size = 300G", sections["MacBackup"])
+        self.assertIn("  fruit:time machine max size = 750G", sections["MacAna"])
+        self.assertFalse(any("time machine" in line for line in sections["Media"]))
+        self.assertEqual(value["shares"][2]["time_machine_max_size_gb"], 0)
+        for bad in (-1, 1048577, "300", True):
+            with self.assertRaisesRegex(ValueError, "Time Machine"):
+                validate_settings({"shares": [{**first, "time_machine_max_size_gb": bad}]})
+
+    def test_time_machine_destinations_are_announced_as_disks(self):
+        ordinary = share("media", "Media")
+        self.assertNotIn("_adisk._tcp", avahi_service(validate_settings({"shares": [ordinary]})))
+        first = share("backups", "MacBackup")
+        first.update(path="pedro", smb_users=["pedro"], time_machine=True)
+        second = share("backups", "MacAna")
+        second.update(path="ana", smb_users=["ana"], time_machine=True)
+        paused = share("backups", "MacOld")
+        paused.update(path="old", smb_users=["ana"], time_machine=True, enabled=False)
+        service = avahi_service(validate_settings({"shares": [ordinary, first, second, paused]}))
+        self.assertIn("<service><type>_adisk._tcp</type><port>9</port>"
+                      "<txt-record>sys=waMa=0,adVF=0x100</txt-record>"
+                      "<txt-record>dk0=adVN=MacBackup,adVF=0x82</txt-record>"
+                      "<txt-record>dk1=adVN=MacAna,adVF=0x82</txt-record></service>", service)
+        self.assertNotIn("MacOld", service)
+        self.assertNotIn("adVN=Media", service)
+
+    def test_discovery_follows_the_interface_with_the_default_route(self):
+        value = validate_settings({"shares": [], "server_name": "Cove NAS"})
+        self.assertIn("allow-interfaces=eth0\n", avahi_conf(value))
+        self.assertIn("allow-interfaces=ens18\n", avahi_conf(value, "ens18"))
+        self.assertNotIn("allow-interfaces", avahi_conf(value, None))
+
+    def test_samba_does_not_publish_a_path_it_would_rewrite(self):
+        item = share("media", "Sales")
+        item["path"] = "reports/100%Units"
+        with self.assertRaisesRegex(ValueError, "caracter %"):
+            validate_settings({"shares": [dict(item)]})
+        paused = validate_settings({"shares": [{**item, "enabled": False}]})
+        self.assertNotIn("[Sales]", samba_conf(paused))
+        nfs_only = share("media", "Sales", smb=False, nfs=True, clients=["10.0.0.0/24"])
+        nfs_only["path"] = "reports/100%Units"
+        self.assertIn("100%Units", unfs3_exports(validate_settings({"shares": [nfs_only]})))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            path.write_text(json.dumps({"shares": [item, share("docs", "Docs")]}), encoding="utf-8")
+            loaded = load(str(path))
+        self.assertEqual([entry["enabled"] for entry in loaded["shares"]], [False, True])
+        self.assertIn("[Docs]", samba_conf(loaded))
+        self.assertNotIn("[Sales]", samba_conf(loaded))
+
+    def test_share_sections_are_read_back_from_the_generated_file(self):
+        first = share("media", "Media")
+        second = share("docs", "Docs", read_only=True)
+        sections = samba_sections(samba_conf(validate_settings({"shares": [first, second]})))
+        self.assertEqual(sorted(sections), ["Docs", "Media"])
+        self.assertIn("  path = /shares/docs", sections["Docs"])
+        self.assertNotEqual(sections["Docs"], sections["Media"])
 
     def test_collaborative_identity_is_configurable(self):
         item = share("data", "Files", smb=False, nfs=True, clients=["10.0.0.0/24"])
