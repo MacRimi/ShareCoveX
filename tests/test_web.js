@@ -556,7 +556,7 @@ async function submit() {
 
   // A mount says where it comes from on the server: the folder inside its disk, or the ZFS dataset.
   const origin = vm.runInContext('mountOrigin', context);
-  assert.equal(origin({ path: '/mnt/data/media', fstype: 'ext4', device: '/dev/mapper/pve-root' }), '/mnt/data/media · /dev/mapper/pve-root');
+  assert.equal(origin({ path: '/mnt/data/media', fstype: 'ext4', device: '/dev/mapper/pve-root' }), '/mnt/data/media');
   assert.equal(origin({ path: '/', fstype: 'zfs', device: 'tank/films' }), 'tank/films');
   assert.equal(origin({ path: '/2024', fstype: 'zfs', device: 'tank/films' }), 'tank/films/2024');
   assert.equal(origin({ path: '/', fstype: 'ext4', device: '/dev/mapper/pve-vm--122--disk--1' }), '/dev/mapper/pve-vm--122--disk--1');

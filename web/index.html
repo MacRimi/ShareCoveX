@@ -38,7 +38,7 @@
     </section>
     <nav class="view-tabs" aria-label="Secciones"><button id="tab-resources" type="button" class="active" aria-current="page">Recursos</button><button id="tab-settings" type="button">Ajustes</button></nav>
     <div id="resources-view">
-    <section class="panel share-panel"><div class="panel-head resources-head"><div><span class="eyebrow">DIRECTORIOS DEL HOST</span><h2>Recursos compartidos</h2></div></div><p class="hint">Aqui aparecen los directorios montados en /shares. Pulsa un directorio para ver sus subcarpetas. Edita un montaje para compartirlo entero, o desactiva esa opcion y configura sus subcarpetas por separado. Dentro de un recurso compartido, una subcarpeta puede anadir el protocolo que al recurso le falta. Para sumar un directorio, agregalo como volumen Docker o punto de montaje OCI.</p><div id="shares" class="shares"></div><p id="ignored-mounts" class="hint" hidden>No se muestran los montajes cuyo nombre no empieza por una letra minuscula o usa algo distinto de minusculas, numeros, _ o -: <strong id="ignored-mount-names" data-i18n-ignore></strong></p></section>
+    <section class="panel share-panel"><div class="panel-head resources-head"><div><span class="eyebrow">DIRECTORIOS DEL HOST</span><h2>Recursos compartidos</h2></div></div><div id="shares" class="shares"></div><p id="ignored-mounts" class="hint" hidden>No se muestran los montajes cuyo nombre no empieza por una letra minuscula o usa algo distinto de minusculas, numeros, _ o -: <strong id="ignored-mount-names" data-i18n-ignore></strong></p></section>
     <div id="editor" class="route-editor" hidden>
       <p id="editor-message" role="status" class="message" hidden></p>
       <form id="settings-form" aria-label="Configuracion de esta ruta">

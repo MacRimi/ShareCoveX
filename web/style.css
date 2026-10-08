@@ -154,6 +154,7 @@ button.is-saved { background:#287fdc !important; }.button.is-failed,button.is-fa
 .tree-info { margin:4px 12px; }
 @media(max-width:780px) {
   .mount-root .route-label { flex-basis:calc(100% - 45px); }
+  .route-badges { margin-left:auto; margin-right:0; }
   .mount-tree { margin-left:10px; }
   .route-children { margin-left:12px; }
   .tree-spacer { display:none; }

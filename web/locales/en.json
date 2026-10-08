@@ -180,7 +180,6 @@
   "Sin atributos extendidos: macOS y Time Machine los necesitan.": "No extended attributes: macOS and Time Machine need them.",
   "No se muestran los montajes cuyo nombre no empieza por una letra minuscula o usa algo distinto de minusculas, numeros, _ o -:": "Mounts whose name does not start with a lowercase letter or uses anything other than lowercase letters, digits, _ or - are not shown:",
   "Demasiados intentos. Espera unos minutos antes de volver a probar.": "Too many attempts. Wait a few minutes before trying again.",
-  "Aqui aparecen los directorios montados en /shares. Pulsa un directorio para ver sus subcarpetas. Edita un montaje para compartirlo entero, o desactiva esa opcion y configura sus subcarpetas por separado. Dentro de un recurso compartido, una subcarpeta puede anadir el protocolo que al recurso le falta. Para sumar un directorio, agregalo como volumen Docker o punto de montaje OCI.": "Directories mounted under /shares appear here. Click a directory to see its subfolders. Edit a mount to share it in full, or disable that option and configure its subfolders separately. Inside a shared resource, a subfolder can add the protocol the resource lacks. To add a directory, attach it as a Docker volume or OCI mount point.",
   "Incluida en el recurso superior": "Included in the resource above",
   "Un destino Time Machine necesita su carpeta en exclusiva.": "A Time Machine destination needs its folder to itself.",
   "Activa el protocolo que quieres anadir a esta carpeta.": "Turn on the protocol you want to add to this folder.",

@@ -89,7 +89,7 @@ const permissionsText = access => access.writable ? formatMessage('UID:GID {uid}
 function mountOrigin(source) {
   const inside = source.path && source.path !== '/' ? source.path : '';
   if (source.fstype === 'zfs') return source.device + inside;
-  return inside ? `${inside} · ${source.device}` : source.device;
+  return inside || source.device;
 }
 
 function appendPermissions(parent, access) {
@@ -569,9 +569,9 @@ function renderRoute(id, path, parent, root = false, browsingRoot = false, open 
   title.textContent = routePath(id, path);
   const detail = document.createElement('small');
   const below = current.settings.shares.filter(item => item.id === id && isAbove(path, item.path)).length;
-  const protocols = share ? [share.smb_enabled ? 'SMB' : '', share.nfs_enabled ? 'NFS' : ''].filter(Boolean).join(' + ') : '';
-  if (share && root) detail.textContent = share.enabled === false ? (protocols ? formatMessage('{name} · Pausado ({protocols})', { name: share.name, protocols }) : formatMessage('{name} · Pausado', { name: share.name })) : formatMessage('{name} · {protocols}', { name: share.name, protocols });
-  else if (share) detail.textContent = formatMessage('Nombre en red: {name}', { name: share.name });
+  if (share && root) {
+    if (share.enabled === false) detail.textContent = 'Pausado';
+  } else if (share) detail.textContent = formatMessage('Nombre en red: {name}', { name: share.name });
   else if (inherited.smb || inherited.nfs) detail.textContent = 'Incluida en el recurso superior';
   else if (below) detail.textContent = below === 1 ? formatMessage('{count} subcarpeta configurada', { count: below }) : formatMessage('{count} subcarpetas configuradas', { count: below });
   else detail.textContent = 'Directorio disponible · No compartido en red';
@@ -580,7 +580,8 @@ function renderRoute(id, path, parent, root = false, browsingRoot = false, open 
     suffix.textContent = ' · Sin subcarpetas';
     detail.append(suffix);
   }
-  label.append(title, detail);
+  label.append(title);
+  if (detail.textContent) label.append(detail);
   const source = root && current.mount_sources?.[id];
   if (source) {
     const origin = document.createElement('small');
