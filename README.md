@@ -173,7 +173,7 @@ NFS uses AUTH_SYS identities and trusted client IP/CIDR rules, not Samba users. 
 mount -t nfs -o vers=3,proto=tcp,mountproto=tcp,port=2049,mountport=2049,nolock SERVER:/shares/media /mnt/media
 ```
 
-NFSv4 uses Ganesha when the environment passes the runtime capability probe. Neither profile currently provides Kerberos.
+NFSv4 uses Ganesha when the environment passes the runtime capability probe and is served as NFSv4.0. Clients using automatic version negotiation can fall back to 4.0; clients that explicitly require 4.1 or 4.2 (`vers=4.1` or `vers=4.2`) are refused. Neither profile currently provides Kerberos.
 
 ### Folders inside a shared folder
 

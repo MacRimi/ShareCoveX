@@ -57,6 +57,7 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("Protocols = 3,4;", config)
         self.assertIn("Enable_UDP = false;", config)
         self.assertIn("Active_krb5 = false;", config)
+        self.assertIn("NFSv4 {\n  Minor_Versions = 0;\n}", config)
         self.assertIn("Path = \"/shares/data\";", config)
         self.assertIn("Pseudo = \"/shares/data\";", config)
         self.assertIn("Squash = All_Squash;", config)

@@ -449,6 +449,12 @@ def ganesha_conf(value):
              "NFS_CORE_PARAM {", f"  Protocols = {protocols};", "  NFS_Port = 2049;",
              "  MNT_Port = 20048;", "  Enable_UDP = false;", "  Enable_NLM = false;",
              "  mount_path_pseudo = true;", "}",
+             # NFSv4.0 only: asked for a directory delegation, which recent
+             # Linux clients do over 4.1 and 4.2, this Ganesha answers that the
+             # operation is illegal and the client reports an I/O error.
+             # Clients using automatic negotiation can fall back to 4.0;
+             # clients that explicitly require 4.1 or 4.2 are refused.
+             "NFSv4 {", "  Minor_Versions = 0;", "}",
              "NFS_KRB5 {", "  Active_krb5 = false;", "}"]
     for share in (item for item in value["shares"] if item["enabled"] and item["nfs_enabled"]):
         access = "RO" if share["nfs_read_only"] else "RW"
