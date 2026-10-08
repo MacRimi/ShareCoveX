@@ -114,7 +114,22 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Invalid request size")
         return json.loads(self.rfile.read(length))
 
+    def _answered(self, handler, *arguments):
+        """A request is always answered: an error nobody expected is logged
+        and returned, instead of closing the connection on the browser."""
+        try:
+            handler(*arguments)
+        except Exception as exc:
+            print(f"ShareCoveX panel: {type(exc).__name__}: {exc}", flush=True)
+            try:
+                self._json(500, {"error": str(exc) or type(exc).__name__})
+            except OSError:
+                pass
+
     def do_GET(self):
+        self._answered(self._get)
+
+    def _get(self):
         url = urlsplit(self.path)
         path = url.path
         # The page, its scripts and its texts hold nothing private: they are
@@ -266,13 +281,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(500, {"error": str(exc)})
 
     def do_PUT(self):
-        self._write("PUT")
+        self._answered(self._write, "PUT")
 
     def do_POST(self):
-        self._write("POST")
+        self._answered(self._write, "POST")
 
     def do_DELETE(self):
-        self._write("DELETE")
+        self._answered(self._write, "DELETE")
 
 
 class Server(ThreadingHTTPServer):

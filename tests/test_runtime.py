@@ -6,7 +6,8 @@ import threading
 from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
 
-from sharecovex.runtime import Runtime, container_environment, default_interface, mountpoints, xattr_supported
+from sharecovex.runtime import (Runtime, container_environment, default_interface, mount_sources, mountpoints,
+                                vfs_handle_error, xattr_supported)
 
 
 class MountpointTests(unittest.TestCase):
@@ -29,6 +30,18 @@ class MountpointTests(unittest.TestCase):
         ]
         self.assertEqual(mountpoints(lines), {"/shares/media", "/shares/my downloads"})
 
+    def test_mount_sources_name_the_folder_and_its_filesystem(self):
+        lines = [
+            "46 22 8:1 /mnt/data/media /shares/media rw,relatime shared:3 master:1 - ext4 /dev/mapper/pve-root rw\n",
+            "47 22 0:52 / /shares/films rw,relatime - zfs tank/films rw,xattr\n",
+            "48 22 8:17 /my\\040photos /shares/photos rw,relatime - xfs /dev/sdb1 rw\n",
+        ]
+        self.assertEqual(mount_sources(lines), {
+            "/shares/media": {"path": "/mnt/data/media", "fstype": "ext4", "device": "/dev/mapper/pve-root"},
+            "/shares/films": {"path": "/", "fstype": "zfs", "device": "tank/films"},
+            "/shares/photos": {"path": "/my photos", "fstype": "xfs", "device": "/dev/sdb1"},
+        })
+
     def test_tree_stays_within_mounted_folder(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -46,6 +59,28 @@ class MountpointTests(unittest.TestCase):
                     runtime.directory("media", "outside")
                 with self.assertRaises(ValueError):
                     runtime.directory("media", "../private")
+
+    def test_a_folder_the_container_cannot_enter_is_reported_not_raised(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "media" / "private").mkdir(parents=True)
+            runtime = object.__new__(Runtime)
+            runtime.lock = threading.RLock()
+            denied = PermissionError(13, "Permission denied")
+            with (patch("sharecovex.runtime.SHARES", root),
+                  patch.object(Runtime, "mounted_folders", return_value=["media"]),
+                  patch("sharecovex.runtime.open", mock_open(read_data=""), create=True)):
+                with patch.object(Path, "iterdir", side_effect=denied):
+                    with self.assertRaisesRegex(ValueError, "cannot be read by this container"):
+                        runtime.tree("media")
+                with patch.object(Path, "is_dir", side_effect=denied):
+                    with self.assertRaisesRegex(ValueError, "cannot be read by this container"):
+                        runtime.directory("media", "private")
+        with (patch("sharecovex.runtime.shutil.which", return_value="/usr/bin/ganesha.nfsd"),
+              patch("sharecovex.runtime.ctypes.CDLL") as library,
+              patch("sharecovex.runtime.os.open", side_effect=denied)):
+            library.return_value.name_to_handle_at.return_value = 0
+            self.assertEqual(vfs_handle_error("/shares/media"), "/shares/media: the folder cannot be opened")
 
     def test_tree_marks_leaf_folders_without_hiding_nested_ones(self):
         with tempfile.TemporaryDirectory() as directory:

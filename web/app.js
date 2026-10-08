@@ -39,14 +39,15 @@ const treeKey = (id, path) => `${id}/${path}`;
 const isAbove = (ancestor, path) => ancestor !== path && (!ancestor || path.startsWith(ancestor + '/'));
 
 // What the shares above and below a route already publish. A folder inside a
-// shared one may only add the protocol that is still free, and a Time Machine
-// destination keeps its folder to itself.
+// shared one may add the protocol that is still free or, over Samba, access
+// of its own; a Time Machine destination keeps its folder to itself.
 function takenProtocols(id, path) {
-  const taken = { smb: false, nfs: false, exclusive: false, any: false };
+  const taken = { smb: false, smbAbove: false, nfs: false, exclusive: false, any: false };
   for (const share of current.settings.shares) {
     if (share.id !== id || share.path === path || !overlaps(share.path, path)) continue;
     taken.any = true;
     taken.smb = taken.smb || !!share.smb_enabled;
+    taken.smbAbove = taken.smbAbove || (!!share.smb_enabled && isAbove(share.path, path));
     taken.nfs = taken.nfs || !!share.nfs_enabled;
     taken.exclusive = taken.exclusive || !!share.time_machine;
   }
@@ -83,6 +84,14 @@ function appendBadges(row, share, inherited) {
 const routePath = (id, path) => `/shares/${id}${path ? '/' + path : ''}`;
 const permissionsText = access => access.writable ? formatMessage('UID:GID {uid}:{gid} · {mode} · Compatible con escritura', access) : formatMessage('UID:GID {uid}:{gid} · {mode} · Sin escritura para {shared_uid}:{shared_gid}', access);
 // A fixed sentence in its own element, so the language catalogue can match it.
+// Where a mount comes from on the server. A ZFS dataset is named with the
+// folder inside it; anything else is the path inside its disk or volume.
+function mountOrigin(source) {
+  const inside = source.path && source.path !== '/' ? source.path : '';
+  if (source.fstype === 'zfs') return source.device + inside;
+  return inside ? `${inside} · ${source.device}` : source.device;
+}
+
 function appendPermissions(parent, access) {
   const permissions = document.createElement('small');
   permissions.className = `route-permissions ${access.writable ? 'writable' : 'not-writable'}`;
@@ -306,8 +315,9 @@ function showNfsMapping() {
 function showSmbAccess() {
   const guest = $('#smb-guest').checked;
   const selectedUsers = $('#smb-users').querySelectorAll('input:checked').length;
-  $('#smb-guest').disabled = !$('#smb-enabled').checked;
-  $('#smb-user-field').hidden = !$('#smb-enabled').checked;
+  const offered = addingSmbAccess || $('#smb-enabled').checked;
+  $('#smb-guest').disabled = !offered || inheritedSmb.guest;
+  $('#smb-user-field').hidden = !offered;
   $('#smb-guest-hint').hidden = !guest;
   $('#read-only').disabled = guest && !selectedUsers;
   $('#tm-share-limit-field').hidden = !$('#time-machine').checked;
@@ -331,26 +341,77 @@ function showTimeMachineLock() {
 
 function showProtocolOptions() {
   showTimeMachineLock();
-  $('#smb-options').hidden = !$('#smb-enabled').checked;
+  $('#smb-options').hidden = !addingSmbAccess && !$('#smb-enabled').checked;
   $('#nfs-options').hidden = !$('#nfs-enabled').checked;
   showResourceMode();
   showNfsMapping();
   showSmbAccess();
 }
 
-// A protocol that a share above or below this route already uses is not
-// offered: the editor shows only what is left to add.
+// What a share above or below this route already gives is not offered again:
+// the editor shows what is left to add.
+// A folder inside a Samba share is already shared: there is no switch to
+// share it. The access it has through the shares above is shown as it is and
+// cannot be taken away; adding some is what makes it a resource of its own.
+const noSmbAccess = () => ({ guest: false, users: new Set(), writers: new Set() });
+let addingSmbAccess = false;
+let inheritedSmb = noSmbAccess();
+function inheritedSmbAccess(id, path) {
+  const access = noSmbAccess();
+  for (const share of current.settings.shares) {
+    if (share.id !== id || !share.smb_enabled || !isAbove(share.path, path)) continue;
+    const users = share.smb_users ?? current.users ?? [];
+    access.guest = access.guest || share.smb_guest === true;
+    for (const user of users) access.users.add(user);
+    if (!share.read_only) for (const user of users) access.writers.add(user);
+  }
+  return access;
+}
+function syncAddedSmbAccess() {
+  if (!addingSmbAccess) return;
+  const chosen = [...$('#smb-users').querySelectorAll('input:checked')].map(input => input.value);
+  $('#smb-enabled').checked = ($('#smb-guest').checked && !inheritedSmb.guest)
+    || chosen.some(user => !inheritedSmb.users.has(user))
+    || (!$('#read-only').checked && chosen.some(user => !inheritedSmb.writers.has(user)));
+  syncResourceState();
+  showResourceMode();
+}
+
 function showInheritance() {
   const taken = activeTarget ? takenProtocols(activeTarget.id, activeTarget.path)
-    : { smb: false, nfs: false, exclusive: false, any: false };
+    : { smb: false, smbAbove: false, nfs: false, exclusive: false, any: false };
   for (const key of ['smb', 'nfs']) {
-    const locked = taken[key] || taken.exclusive;
+    // Over Samba a folder inside a shared one can still add access of its
+    // own; an NFS export cannot be repeated inside another one.
+    const locked = taken.exclusive || (key === 'nfs' && taken.nfs);
     lockedProtocols[key] = locked;
     const input = $(`#${key}-enabled`);
     if (locked) input.checked = false;
     input.disabled = locked;
     $(`#${key}-section`).hidden = locked;
   }
+  addingSmbAccess = taken.smbAbove && !taken.exclusive;
+  $('#smb-added-hint').hidden = !addingSmbAccess;
+  for (const id of ['#smb-enabled-switch', '#smb-scope-hint', '#time-machine-switch', '#time-machine-hint']) $(id).hidden = addingSmbAccess;
+  inheritedSmb = addingSmbAccess ? inheritedSmbAccess(activeTarget.id, activeTarget.path) : noSmbAccess();
+  // A resource that already adds access here keeps what it chose on top.
+  const own = $('#smb-enabled').checked;
+  if (addingSmbAccess) {
+    if (inheritedSmb.guest) $('#smb-guest').checked = true;
+    else if (!own) $('#smb-guest').checked = false;
+    if (!own) {
+      const inheritedUsers = [...inheritedSmb.users];
+      $('#read-only').checked = !inheritedUsers.length
+        || inheritedUsers.some(user => !inheritedSmb.writers.has(user));
+    }
+  }
+  for (const input of $('#smb-users').querySelectorAll('input')) {
+    const inherited = inheritedSmb.users.has(input.value);
+    if (inherited) input.checked = true;
+    else if (addingSmbAccess && !own) input.checked = false;
+    input.disabled = inherited;
+  }
+  syncAddedSmbAccess();
   if (taken.any) $('#time-machine').checked = false;
   $('#time-machine').disabled = taken.any;
 }
@@ -520,6 +581,13 @@ function renderRoute(id, path, parent, root = false, browsingRoot = false, open 
     detail.append(suffix);
   }
   label.append(title, detail);
+  const source = root && current.mount_sources?.[id];
+  if (source) {
+    const origin = document.createElement('small');
+    origin.className = 'route-origin';
+    origin.textContent = formatMessage('Origen en el servidor: {origin}', { origin: mountOrigin(source) });
+    label.append(origin);
+  }
   const access = root ? current.mount_permissions?.[id] : current.share_permissions?.[key];
   if (share && access) appendPermissions(label, access);
   row.append(label);
@@ -542,12 +610,10 @@ function renderRoute(id, path, parent, root = false, browsingRoot = false, open 
     edit.type = 'button';
     edit.className = 'route-action edit';
     setActionContent(edit, 'edit', 'Editar');
-    // Nothing is left to configure where the shares around already use both protocols.
-    const full = !share && !root && (taken.exclusive || (taken.smb && taken.nfs));
+    // Nothing can be added inside a Time Machine destination.
+    const full = !share && !root && taken.exclusive;
     edit.disabled = full;
-    edit.title = !full ? 'Configurar esta ruta'
-      : taken.exclusive ? 'Un destino Time Machine necesita su carpeta en exclusiva.'
-        : 'Esta carpeta ya se comparte por SMB y NFS: no queda ningun protocolo que anadir.';
+    edit.title = full ? 'Un destino Time Machine necesita su carpeta en exclusiva.' : 'Configurar esta ruta';
     edit.addEventListener('click', () => openEditor(id, path, share));
     row.append(edit);
   }
@@ -853,6 +919,7 @@ function render(state) {
     input.type = 'checkbox';
     input.value = user;
     input.checked = priorUsers.has(user);
+    input.disabled = inheritedSmb.users.has(user);
     label.append(input, document.createTextNode(user));
     smbUsers.append(label);
   }
@@ -914,14 +981,15 @@ $('#settings-form').addEventListener('submit', async event => {
     return;
   }
   const taken = takenProtocols(id, path);
-  if (taken.exclusive || ($('#smb-enabled').checked && taken.smb) || ($('#nfs-enabled').checked && taken.nfs)
-      || ($('#time-machine').checked && taken.any)) {
+  if (taken.exclusive || ($('#nfs-enabled').checked && taken.nfs) || ($('#time-machine').checked && taken.any)) {
     editorMessage('Esta ruta se solapa con un recurso existente. Edita o retira el recurso padre o hijo antes de publicarla.', true);
     return;
   }
+  syncAddedSmbAccess();
   const noProtocols = !$('#smb-enabled').checked && !$('#nfs-enabled').checked;
   if (noProtocols && !existing) {
-    editorMessage('Activa el protocolo que quieres anadir a esta carpeta.', true);
+    editorMessage(addingSmbAccess ? 'Marca el acceso que quieres anadir a esta carpeta.'
+      : 'Activa el protocolo que quieres anadir a esta carpeta.', true);
     return;
   }
   if (noProtocols) $('#resource-enabled').checked = false;
@@ -951,8 +1019,8 @@ $('#settings-form').addEventListener('submit', async event => {
     nfs_uid: !$('#nfs-enabled').checked || $('#nfs-mapping').value === 'root-squash' || !$('#nfs-uid').value ? null : Number($('#nfs-uid').value),
     nfs_gid: !$('#nfs-enabled').checked || $('#nfs-mapping').value === 'root-squash' || !$('#nfs-gid').value ? null : Number($('#nfs-gid').value),
     nfs_insecure: $('#nfs-insecure').checked,
-    smb_users: smbUsers,
-    smb_guest: $('#smb-guest').checked,
+    smb_users: addingSmbAccess && !$('#smb-enabled').checked ? [] : smbUsers,
+    smb_guest: $('#smb-enabled').checked && $('#smb-guest').checked,
     time_machine: $('#time-machine').checked,
     time_machine_max_size_gb: $('#time-machine').checked ? Number($('#tm-share-limit').value) || 0 : 0
   };
@@ -1032,7 +1100,7 @@ $('#share-all').addEventListener('change', event => {
   if (!activeTarget || activeTarget.path) return;
   const id = activeTarget.id;
   const taken = takenProtocols(id, '');
-  if (event.target.checked && (taken.exclusive || (taken.smb && taken.nfs))) {
+  if (event.target.checked && taken.exclusive) {
     event.target.checked = false;
     message('Retira primero los recursos de las subcarpetas antes de compartir todo el montaje.', true);
     return;
@@ -1043,10 +1111,15 @@ $('#share-all').addEventListener('change', event => {
   renderMounts();
 });
 $('#nfs-mapping').addEventListener('change', showNfsMapping);
-$('#smb-guest').addEventListener('change', event => {
+$('#smb-guest').addEventListener('change', () => {
+  syncAddedSmbAccess();
   showSmbAccess();
 });
-$('#smb-users').addEventListener('change', showSmbAccess);
+$('#smb-users').addEventListener('change', () => {
+  syncAddedSmbAccess();
+  showSmbAccess();
+});
+$('#read-only').addEventListener('change', syncAddedSmbAccess);
 // What was asked for is being fixed: the note next to the field goes away.
 $('#settings-form').addEventListener('input', () => { if (invalidField) editorMessage(''); });
 $('#smb-enabled').addEventListener('change', event => {
@@ -1086,7 +1159,11 @@ confirmInPlace($('#delete-resource'), async event => {
     const state = await api('/api/settings', 'PUT', { ...current.settings, shares });
     resetForm();
     render(state);
-    message('Configuracion eliminada. La carpeta y sus archivos se conservan.');
+    // Inside a shared folder only what this one added goes away.
+    const inherited = inheritedProtocols(share.id, share.path);
+    message(inherited.smb || inherited.nfs
+      ? 'Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.'
+      : 'Configuracion eliminada. La carpeta y sus archivos se conservan.');
   } catch (error) { message(error.message, true); }
 });
 showProtocolOptions();

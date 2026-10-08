@@ -225,15 +225,35 @@ def validate_settings(value):
                 continue
             a, b = left["path"], right["path"]
             if not a or not b or a.startswith(b + "/") or b.startswith(a + "/"):
-                # A folder inside a shared one may only add the protocol the
-                # outer share lacks. A rule of its own for a protocol both
-                # publish could be bypassed through the outer share, and a
-                # Time Machine destination needs its folder to itself.
+                # A folder inside a shared one can only add access, never take
+                # it away: it stays reachable through the outer share with the
+                # rules of that share. It adds the protocol the outer share
+                # lacks or, over SMB, guests, users or writing the outer share
+                # does not give. A Time Machine destination needs its folder
+                # to itself.
                 if (left["time_machine"] or right["time_machine"]
-                        or (left["smb_enabled"] and right["smb_enabled"])
                         or (left["nfs_enabled"] and right["nfs_enabled"])):
                     raise ValueError("Overlapping shares could bypass access restrictions")
+                outer, inner = (left, right) if not a or b.startswith(a + "/") else (right, left)
+                if left["smb_enabled"] and right["smb_enabled"] and not adds_smb_access(outer, inner):
+                    raise ValueError("A folder inside a shared one can only add access over SMB: "
+                                     "guests, other users or write permission")
     return value
+
+
+def adds_smb_access(outer, inner):
+    """Whether a share inside another one gives over SMB something the outer
+    one does not: guests, a user, or writing."""
+    if inner.get("smb_guest") and not outer.get("smb_guest"):
+        return True
+    outer_users, inner_users = outer["smb_users"], inner["smb_users"]
+    # None stands for every Samba user.
+    if outer_users is not None and (inner_users is None or set(inner_users) - set(outer_users)):
+        return True
+
+    def writes(share):
+        return not share["read_only"] and (share["smb_users"] is None or bool(share["smb_users"]))
+    return writes(inner) and not writes(outer)
 
 
 def nfs_export_id(share):
@@ -321,7 +341,17 @@ def samba_conf(value):
              "  state directory = /config/samba-state",
              # A rejected sign-in is written to the container log with its
              # user, address and reason; smbd is started with --debug-stdout.
-             "  log level = 1 auth_audit:2", "  vfs objects = catia fruit streams_xattr"]
+             "  log level = 1 auth_audit:2", "  vfs objects = catia fruit streams_xattr",
+             # What is created in a folder takes the permissions of that folder,
+             # so nothing ends up less reachable than the place it lives in:
+             # whoever reads or writes there keeps doing so with the new files.
+             "  inherit permissions = yes",
+             # Without this a new file would also be marked as executable for
+             # its owner, which is how Samba keeps the DOS archive attribute.
+             "  map archive = no",
+             # A Mac would otherwise set its own mode on what it creates,
+             # over the one inherited from the folder.
+             "  fruit:nfs_aces = no"]
     for share in value["shares"]:
         if not share["enabled"] or not share["smb_enabled"]:
             continue
@@ -330,10 +360,6 @@ def samba_conf(value):
         lines += [f"[{share['name']}]", f"  path = {share_path(share)}",
                   f"  browseable = {'yes' if share.get('smb_browseable', True) else 'no'}",
                   f"  guest ok = {'yes' if guest else 'no'}",
-                  "  create mask = 0660",
-                  "  force create mode = 0660",
-                  "  directory mask = 2770",
-                  "  force directory mode = 2770",
                   f"  read only = {'yes' if guest or share['read_only'] else 'no'}"]
         if value.get("collaborative_mode", True):
             lines += ["  force user = sharecovex-files"]

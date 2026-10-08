@@ -183,7 +183,6 @@
   "Aqui aparecen los directorios montados en /shares. Pulsa un directorio para ver sus subcarpetas. Edita un montaje para compartirlo entero, o desactiva esa opcion y configura sus subcarpetas por separado. Dentro de un recurso compartido, una subcarpeta puede anadir el protocolo que al recurso le falta. Para sumar un directorio, agregalo como volumen Docker o punto de montaje OCI.": "Directories mounted under /shares appear here. Click a directory to see its subfolders. Edit a mount to share it in full, or disable that option and configure its subfolders separately. Inside a shared resource, a subfolder can add the protocol the resource lacks. To add a directory, attach it as a Docker volume or OCI mount point.",
   "Incluida en el recurso superior": "Included in the resource above",
   "Un destino Time Machine necesita su carpeta en exclusiva.": "A Time Machine destination needs its folder to itself.",
-  "Esta carpeta ya se comparte por SMB y NFS: no queda ningun protocolo que anadir.": "This folder is already shared over SMB and NFS: there is no protocol left to add.",
   "Activa el protocolo que quieres anadir a esta carpeta.": "Turn on the protocol you want to add to this folder.",
   "Acceso": "Access",
   "Red": "Network",
@@ -353,5 +352,12 @@
   "Migracion pendiente: {error}": "Pending migration: {error}",
   "Escuchando: {error}": "Listening: {error}",
   "En marcha: {error}": "In progress: {error}",
-  "Error: {error}": "Error: {error}"
+  "Error: {error}": "Error: {error}",
+  "Folder cannot be read by this container": "This container cannot read the folder.",
+  "{path}: the folder cannot be opened": "{path}: the folder cannot be opened",
+  "Esta carpeta ya se comparte por Samba dentro de otro recurso de este montaje. El acceso que da ese recurso aparece marcado y no se puede retirar desde aqui; solo se anade: invitados de solo lectura, otros usuarios o permiso de escritura. A lo que anadas se entra por el nombre de este recurso.": "This folder is already shared over Samba inside another resource of this mount. The access that resource gives is shown selected and cannot be removed here; you only add: read-only guests, other users or write permission. What you add is reached through the name of this resource.",
+  "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "A folder inside a shared one can only add access over Samba: guests, other users or write permission.",
+  "Marca el acceso que quieres anadir a esta carpeta.": "Choose the access you want to add to this folder.",
+  "Origen en el servidor: {origin}": "Source on the server: {origin}",
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Configuration deleted. The folder is shared again only with the settings of the resource above it."
 }

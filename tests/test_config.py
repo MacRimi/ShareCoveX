@@ -214,7 +214,7 @@ class ConfigTests(unittest.TestCase):
         parent = share("media", "Media")
         child = share("media", "Private")
         child["path"] = "private"
-        with self.assertRaisesRegex(ValueError, "Overlapping"):
+        with self.assertRaisesRegex(ValueError, "can only add access over SMB"):
             validate_settings({"shares": [parent, child]})
         for bad in ("../private", "movies/../private", "/etc", "foo;bar", "foo\nbar", "linked/{x}"):
             child["path"] = bad
@@ -239,19 +239,13 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("path = /shares/media/movies/classics", samba_conf(value))
         self.assertIn("/shares/media ", unfs3_exports(value))
 
-    def test_a_folder_inside_a_share_cannot_repeat_its_protocols(self):
-        parent = share("media", "Media", smb=True, nfs=True, clients=["192.168.1.0/24"])
-        for smb, nfs in ((True, False), (False, True), (True, True)):
-            child = share("media", "Child", smb=smb, nfs=nfs, clients=["10.0.0.0/24"] if nfs else None)
-            child["path"] = "movies"
-            with self.assertRaisesRegex(ValueError, "Overlapping"):
-                validate_settings({"shares": [dict(parent), child]})
-        smb_parent = share("media", "Media")
-        dual_child = share("media", "Child", smb=True, nfs=True, clients=["10.0.0.0/24"])
-        dual_child["path"] = "movies"
+    def test_a_folder_inside_a_share_cannot_repeat_its_nfs_export(self):
+        parent = share("media", "Media", smb=False, nfs=True, clients=["192.168.1.0/24"])
+        child = share("media", "Child", smb=False, nfs=True, clients=["10.0.0.0/24"])
+        child["path"] = "movies"
         with self.assertRaisesRegex(ValueError, "Overlapping"):
-            validate_settings({"shares": [smb_parent, dual_child]})
-        # Three levels: the innermost has nothing left to add.
+            validate_settings({"shares": [dict(parent), child]})
+        # Three levels: the innermost has nothing left to add over NFS.
         top = share("media", "Top")
         middle = share("media", "Middle", smb=False, nfs=True, clients=["10.0.0.0/24"])
         middle["path"] = "a"
@@ -259,6 +253,66 @@ class ConfigTests(unittest.TestCase):
         bottom["path"] = "a/b"
         with self.assertRaisesRegex(ValueError, "Overlapping"):
             validate_settings({"shares": [top, middle, bottom]})
+
+    def test_a_folder_inside_an_smb_share_can_add_guests_users_or_writing(self):
+        # Users with a password on the whole folder, and one subfolder also open to guests.
+        outer = share("media", "Media")
+        outer["smb_users"] = ["alice"]
+        public = share("media", "Public", read_only=True)
+        public.update(path="public", smb_guest=True, smb_users=[])
+        value = validate_settings({"shares": [dict(outer), dict(public)]})
+        sections = samba_sections(samba_conf(value))
+        self.assertIn("  valid users = alice", sections["Media"])
+        self.assertIn("  guest ok = no", sections["Media"])
+        self.assertIn("  guest ok = yes", sections["Public"])
+        self.assertIn("  read only = yes", sections["Public"])
+        self.assertIn("  path = /shares/media/public", sections["Public"])
+        self.assertIn("  map to guest = Bad User", samba_conf(value))
+        # Guests reading the whole folder, and one subfolder a user writes to.
+        guests = share("media", "Media", read_only=True)
+        guests.update(smb_guest=True, smb_users=[])
+        writer = share("media", "Inbox")
+        writer.update(path="inbox", smb_guest=True, smb_users=["bob"])
+        sections = samba_sections(samba_conf(validate_settings({"shares": [dict(guests), dict(writer)]})))
+        self.assertIn("  guest only = yes", sections["Media"])
+        self.assertIn("  valid users = nobody bob", sections["Inbox"])
+        self.assertIn("  write list = bob", sections["Inbox"])
+        # Read only for the guests; the write list is what lets the user write.
+        self.assertIn("  read only = yes", sections["Inbox"])
+        # Another user on a subfolder, and writing where the outer share only reads.
+        other = share("media", "Team")
+        other.update(path="team", smb_users=["alice", "carol"])
+        validate_settings({"shares": [dict(outer), dict(other)]})
+        readers = share("media", "Media", read_only=True)
+        readers["smb_users"] = ["alice"]
+        editors = share("media", "Drafts")
+        editors.update(path="drafts", smb_users=["alice"])
+        validate_settings({"shares": [dict(readers), dict(editors)]})
+        # The order in which they are saved does not matter.
+        validate_settings({"shares": [dict(public), dict(outer)]})
+
+    def test_a_folder_inside_an_smb_share_cannot_narrow_it(self):
+        outer = share("media", "Media")
+        outer["smb_users"] = ["alice", "bob"]
+        for change in ({"smb_users": ["alice"]},                       # fewer users
+                       {"smb_users": ["alice", "bob"]},                # the same ones
+                       {"smb_users": ["alice"], "read_only": True}):   # read only for someone who writes outside
+            inner = share("media", "Inner")
+            inner.update(path="inner", **change)
+            with self.assertRaisesRegex(ValueError, "can only add access over SMB"):
+                validate_settings({"shares": [dict(outer), inner]})
+        everyone = share("media", "Media")
+        some = share("media", "Inner")
+        some.update(path="inner", smb_users=["alice"])
+        with self.assertRaisesRegex(ValueError, "can only add access over SMB"):
+            validate_settings({"shares": [everyone, some]})
+        # Guests everywhere: a subfolder that leaves them out adds nothing.
+        guests = share("media", "Media", read_only=True)
+        guests.update(smb_guest=True, smb_users=[])
+        again = share("media", "Inner", read_only=True)
+        again.update(path="inner", smb_guest=True, smb_users=[])
+        with self.assertRaisesRegex(ValueError, "can only add access over SMB"):
+            validate_settings({"shares": [guests, again]})
 
     def test_a_time_machine_destination_keeps_its_folder_to_itself(self):
         backup = share("backups", "MacBackup")
@@ -289,8 +343,12 @@ class ConfigTests(unittest.TestCase):
                                    "shared_uid": 1000, "shared_gid": 1000})
         config = samba_conf(value)
         self.assertIn("fruit:time machine max size = 750G", config)
-        self.assertIn("force create mode = 0660", config)
-        self.assertIn("force directory mode = 2770", config)
+        # New files take the permissions of their folder, and a Mac cannot replace them.
+        self.assertIn("  inherit permissions = yes\n", config)
+        self.assertIn("  fruit:nfs_aces = no\n", config)
+        self.assertLess(config.index("inherit permissions"), config.index("[MacBackup]"))
+        for fixed in ("create mask", "force create mode", "directory mask", "force directory mode"):
+            self.assertNotIn(fixed, config)
         self.assertIn("force user = sharecovex-files", config)
         for bad in (-1, 1048577, "500"):
             with self.assertRaises(ValueError):

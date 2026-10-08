@@ -230,12 +230,12 @@ async function submit() {
     { id: 'mac', path: '', name: 'Mac', smb_enabled: true, nfs_enabled: false, time_machine: true },
     { id: 'docs', path: 'a/b', name: 'Deep', enabled: false, smb_enabled: true, nfs_enabled: false }
   ];`, context);
-  assert.deepEqual(evaluate("takenProtocols('media', 'movies')"), { smb: true, nfs: false, exclusive: false, any: true });
-  assert.deepEqual(evaluate("takenProtocols('media', '')"), { smb: false, nfs: true, exclusive: false, any: true });
-  assert.deepEqual(evaluate("takenProtocols('media', 'movies/classics')"), { smb: true, nfs: true, exclusive: false, any: true });
-  assert.deepEqual(evaluate("takenProtocols('mac', 'bundle')"), { smb: true, nfs: false, exclusive: true, any: true });
-  assert.deepEqual(evaluate("takenProtocols('docs', 'a')"), { smb: true, nfs: false, exclusive: false, any: true });
-  assert.deepEqual(evaluate("takenProtocols('docs', 'other')"), { smb: false, nfs: false, exclusive: false, any: false });
+  assert.deepEqual(evaluate("takenProtocols('media', 'movies')"), { smb: true, smbAbove: true, nfs: false, exclusive: false, any: true });
+  assert.deepEqual(evaluate("takenProtocols('media', '')"), { smb: false, smbAbove: false, nfs: true, exclusive: false, any: true });
+  assert.deepEqual(evaluate("takenProtocols('media', 'movies/classics')"), { smb: true, smbAbove: true, nfs: true, exclusive: false, any: true });
+  assert.deepEqual(evaluate("takenProtocols('mac', 'bundle')"), { smb: true, smbAbove: true, nfs: false, exclusive: true, any: true });
+  assert.deepEqual(evaluate("takenProtocols('docs', 'a')"), { smb: true, smbAbove: false, nfs: false, exclusive: false, any: true });
+  assert.deepEqual(evaluate("takenProtocols('docs', 'other')"), { smb: false, smbAbove: false, nfs: false, exclusive: false, any: false });
   assert.deepEqual(evaluate("inheritedProtocols('media', 'movies')"), { smb: true, nfs: false });
   assert.deepEqual(evaluate("inheritedProtocols('media', '')"), { smb: false, nfs: false });
   assert.deepEqual(evaluate("inheritedProtocols('docs', 'a/b/c')"), { smb: false, nfs: false });
@@ -263,7 +263,7 @@ async function submit() {
   assert.equal(shows.children[3].disabled, false);
   assert.equal(shows.children[3].title, 'Configurar esta ruta');
 
-  // Nothing is left to add under a mount shared over both protocols, nor inside a Time Machine destination.
+  // Samba access can still be added under a mount shared over both protocols; nothing inside a Time Machine destination.
   const full = node();
   context.full = full;
   vm.runInContext(`treeCache.set('backups/', { children: ['x'], expandable: { x: false }, truncated: false });
@@ -271,8 +271,8 @@ async function submit() {
     renderFolderTree('backups', '', full); renderFolderTree('mac', '', full);`, context);
   const [both, exclusive] = full.children.map(branch => branch.children[0]);
   assert.deepEqual(both.children[2].children.map(badge => badge.className), ['protocol-smb', 'protocol-nfs']);
-  assert.equal(both.children[3].disabled, true);
-  assert.match(both.children[3].title, /no queda ningun protocolo/);
+  assert.equal(both.children[3].disabled, false);
+  assert.equal(both.children[3].title, 'Configurar esta ruta');
   assert.equal(exclusive.children[3].disabled, true);
   assert.match(exclusive.children[3].title, /Time Machine necesita su carpeta en exclusiva/);
   vm.runInContext("treeCache.clear();", context);
@@ -412,24 +412,39 @@ async function submit() {
   assert.equal(element('#resource-enabled').checked, false);
   assert.equal(element('#smb-enabled').checked, true);
   vm.runInContext('resetForm(); current.settings.shares = [];', context);
-  element('#smb-users').querySelectorAll = () => [{ value: 'pedro' }];
+  const pick = { value: 'pedro', checked: false, disabled: false };
+  element('#smb-users').querySelectorAll = selector => selector === 'input:checked' && !pick.checked ? [] : [pick];
+  const outer = extra => `current.settings.shares = [{ id: 'media', path: '', name: 'Media', smb_enabled: true, nfs_enabled: false,
+    read_only: false, smb_guest: false, smb_users: ['pedro'], ...${JSON.stringify(extra || {})} }];
+    originalOpenEditor('media', 'shows', undefined);`;
 
-  // Editing a folder inside an SMB share offers only NFS, switched off, and sends just that.
-  vm.runInContext(`current.settings.shares = [{ id: 'media', path: '', name: 'Media', smb_enabled: true, nfs_enabled: false }];
-    originalOpenEditor('media', 'shows', undefined);`, context);
-  assert.equal(element('#smb-section').hidden, true);
-  assert.equal(element('#smb-enabled').disabled, true);
+  // A folder inside an SMB share is already shared: no switch for Samba, and the access it has through
+  // that share is shown selected and cannot be taken away.
+  vm.runInContext(outer(), context);
+  assert.equal(element('#smb-section').hidden, false);
+  assert.equal(element('#smb-enabled-switch').hidden, true);
+  assert.equal(element('#smb-added-hint').hidden, false);
+  // Nothing of its own is saved yet, so there is no configuration to delete or pause.
+  assert.equal(element('#delete-resource').hidden, true);
+  assert.equal(element('.resource-state').hidden, true);
+  assert.equal(element('#smb-options').hidden, false);
+  assert.equal(element('#smb-user-field').hidden, false);
+  assert.equal(element('#time-machine-switch').hidden, true);
+  assert.deepEqual([pick.checked, pick.disabled], [true, true]);
+  assert.deepEqual([element('#smb-guest').checked, element('#smb-guest').disabled], [false, false]);
+  assert.equal(element('#read-only').checked, false);
   assert.equal(element('#smb-enabled').checked, false);
   assert.equal(element('#nfs-section').hidden, false);
   assert.equal(element('#nfs-enabled').disabled, false);
   assert.equal(element('#nfs-enabled').checked, false);
   assert.equal(element('#time-machine').disabled, true);
   assert.equal(vm.runInContext('openMounts.has("media")', context), true);
-  // Saved as it opens, with nothing switched on, it adds nothing.
+  // Saved as it opens it adds nothing.
   sent = undefined;
   await submit();
   assert.equal(sent, undefined);
-  assert.match(element('#editor-message').textContent, /Activa el protocolo que quieres anadir/);
+  assert.match(element('#editor-message').textContent, /Marca el acceso que quieres anadir/);
+  // NFS alone is added without a Samba resource of its own.
   element('#nfs-enabled').checked = true;
   element('#name').value = 'ShowsNfs';
   element('#resource-enabled').checked = true;
@@ -437,23 +452,114 @@ async function submit() {
   sent = undefined;
   await submit();
   const added = JSON.parse(sent.options.body).shares;
-  assert.deepEqual(added.map(item => [item.path, item.smb_enabled, item.nfs_enabled]), [['', true, false], ['shows', false, true]]);
-  assert.equal(element('#smb-enabled').disabled, false);
-  assert.equal(element('#smb-section').hidden, false);
+  assert.deepEqual(added.map(item => [item.path, item.smb_enabled, item.nfs_enabled, item.smb_users, item.smb_guest]),
+    [['', true, false, ['pedro'], false], ['shows', false, true, [], false]]);
+  assert.equal(element('#smb-added-hint').hidden, true);
+  assert.equal(element('#smb-enabled-switch').hidden, false);
   assert.equal(element('#time-machine').disabled, false);
-  // The protocol the outer share already publishes is refused if it is sent anyway.
-  vm.runInContext(`current.settings.shares = [{ id: 'media', path: '', name: 'Media', smb_enabled: true, nfs_enabled: false }];
-    originalOpenEditor('media', 'shows', undefined);`, context);
-  element('#smb-enabled').checked = true;
+  assert.equal(pick.disabled, false);
+  // Adding guests is what makes a Samba resource of a folder inside a share that asks for a user.
+  vm.runInContext(outer(), context);
   element('#smb-guest').checked = true;
-  element('#resource-enabled').checked = true;
+  element('#smb-guest').listeners.change({ target: element('#smb-guest') });
+  assert.equal(element('#smb-enabled').checked, true);
+  element('#name').value = 'ShowsOpen';
+  element('#clients').value = '';
+  sent = undefined;
+  await submit();
+  const opened = JSON.parse(sent.options.body).shares;
+  assert.deepEqual(opened.map(item => [item.path, item.smb_enabled, item.smb_guest, item.smb_users, item.read_only]),
+    [['', true, false, ['pedro'], false], ['shows', true, true, ['pedro'], false]]);
+  // Inside a share open to guests they stay allowed, and a user is what is added.
+  vm.runInContext(outer({ smb_guest: true, smb_users: [], read_only: true }), context);
+  assert.deepEqual([element('#smb-guest').checked, element('#smb-guest').disabled], [true, true]);
+  assert.deepEqual([pick.checked, pick.disabled], [false, false]);
+  assert.equal(element('#read-only').checked, true);
+  assert.equal(element('#smb-enabled').checked, false);
+  pick.checked = true;
+  element('#smb-users').listeners.change({ target: pick });
+  assert.equal(element('#smb-enabled').checked, true);
+  element('#read-only').checked = false;
+  element('#name').value = 'ShowsWrite';
+  sent = undefined;
+  await submit();
+  const written = JSON.parse(sent.options.body).shares;
+  assert.deepEqual(written.map(item => [item.path, item.smb_enabled, item.smb_guest, item.smb_users, item.read_only]),
+    [['', true, true, [], true], ['shows', true, true, ['pedro'], false]]);
+  // Inside a read-only share, writing is what is added for the same user.
+  vm.runInContext(outer({ read_only: true }), context);
+  assert.deepEqual([pick.checked, pick.disabled, element('#read-only').checked], [true, true, true]);
+  assert.equal(element('#smb-enabled').checked, false);
+  element('#read-only').checked = false;
+  element('#read-only').listeners.change({ target: element('#read-only') });
+  assert.equal(element('#smb-enabled').checked, true);
+  vm.runInContext('resetForm();', context);
+  assert.deepEqual([pick.disabled, element('#smb-guest').disabled && element('#smb-enabled').checked], [false, false]);
+  // Every user of the outer share is shown selected, whether it names them or lets all of them in.
+  const picks = ['ana', 'luis', 'pedro'].map(value => ({ value, checked: false, disabled: false }));
+  const onePick = element('#smb-users').querySelectorAll;
+  element('#smb-users').querySelectorAll = selector => selector === 'input:checked' ? picks.filter(item => item.checked) : picks;
+  vm.runInContext("current.users = ['ana', 'luis', 'pedro'];", context);
+  vm.runInContext(outer({ smb_users: ['luis', 'pedro'] }), context);
+  assert.deepEqual(picks.map(item => [item.value, item.checked, item.disabled]),
+    [['ana', false, false], ['luis', true, true], ['pedro', true, true]]);
+  assert.equal(element('#smb-enabled').checked, false);
+  picks[0].checked = true;
+  element('#smb-users').listeners.change({ target: picks[0] });
+  assert.equal(element('#smb-enabled').checked, true);
+  vm.runInContext(outer({ smb_users: null }), context);
+  assert.deepEqual(picks.map(item => [item.checked, item.disabled]), [[true, true], [true, true], [true, true]]);
+  assert.equal(element('#smb-enabled').checked, false);
+  // A folder two levels down gathers the users of every share above it.
+  vm.runInContext(`current.settings.shares = [
+    { id: 'media', path: '', name: 'Media', smb_enabled: true, nfs_enabled: false, read_only: true, smb_guest: false, smb_users: ['pedro'] },
+    { id: 'media', path: 'shows', name: 'Shows', smb_enabled: true, nfs_enabled: false, read_only: true, smb_guest: false, smb_users: ['pedro', 'luis'],
+      smb_browseable: true, smb_encryption: 'default', smb_clients: [], nfs_read_only: false, nfs_clients: [], nfs_mapping: 'root-squash',
+      nfs_insecure: false, time_machine: false }];
+    originalOpenEditor('media', 'shows/season1', undefined);`, context);
+  assert.deepEqual(picks.map(item => [item.checked, item.disabled]), [[false, false], [true, true], [true, true]]);
+  // The share in between opens with its own user on top of the inherited one.
+  vm.runInContext("originalOpenEditor('media', 'shows', current.settings.shares[1]);", context);
+  assert.deepEqual(picks.map(item => [item.checked, item.disabled]), [[false, false], [true, false], [true, true]]);
+  assert.equal(element('#delete-resource').hidden, false);
+  assert.equal(element('#smb-enabled').checked, true);
+  // Writing is inherited per user, not globally: Bob writing in an intermediate
+  // share must not hide that Alice is still read-only farther down.
+  vm.runInContext(`current.settings.shares = [
+    { id: 'media', path: '', name: 'Media', smb_enabled: true, nfs_enabled: false, read_only: true, smb_guest: false, smb_users: ['ana'],
+      smb_browseable: true, smb_encryption: 'default', smb_clients: [], nfs_read_only: false, nfs_clients: [], nfs_mapping: 'root-squash',
+      nfs_insecure: false, time_machine: false },
+    { id: 'media', path: 'shows', name: 'Shows', smb_enabled: true, nfs_enabled: false, read_only: false, smb_guest: false, smb_users: ['luis'],
+      smb_browseable: true, smb_encryption: 'default', smb_clients: [], nfs_read_only: false, nfs_clients: [], nfs_mapping: 'root-squash',
+      nfs_insecure: false, time_machine: false }];
+    originalOpenEditor('media', 'shows/season1', undefined);`, context);
+  assert.deepEqual(picks.map(item => [item.value, item.checked, item.disabled]),
+    [['ana', true, true], ['luis', true, true], ['pedro', false, false]]);
+  assert.equal(element('#read-only').checked, true);
+  element('#read-only').checked = false;
+  element('#read-only').listeners.change({ target: element('#read-only') });
+  assert.equal(element('#smb-enabled').checked, true);
+  vm.runInContext("resetForm(); current.users = ['pedro'];", context);
+  element('#smb-users').querySelectorAll = onePick;
+  // An NFS export is still refused inside another one.
+  vm.runInContext(`current.settings.shares = [{ id: 'media', path: '', name: 'Media', smb_enabled: false, nfs_enabled: true }];
+    originalOpenEditor('media', 'shows', undefined);`, context);
+  assert.equal(element('#nfs-section').hidden, true);
+  assert.equal(element('#smb-added-hint').hidden, true);
+  element('#nfs-enabled').checked = true;
   sent = undefined;
   await submit();
   assert.equal(sent, undefined);
   assert.match(element('#editor-message').textContent, /se solapa con un recurso existente/);
-  element('#smb-guest').checked = false;
-  element('#clients').value = '';
+  element('#nfs-enabled').checked = false;
   vm.runInContext('resetForm(); current.settings.shares = [];', context);
+
+  // A mount says where it comes from on the server: the folder inside its disk, or the ZFS dataset.
+  const origin = vm.runInContext('mountOrigin', context);
+  assert.equal(origin({ path: '/mnt/data/media', fstype: 'ext4', device: '/dev/mapper/pve-root' }), '/mnt/data/media · /dev/mapper/pve-root');
+  assert.equal(origin({ path: '/', fstype: 'zfs', device: 'tank/films' }), 'tank/films');
+  assert.equal(origin({ path: '/2024', fstype: 'zfs', device: 'tank/films' }), 'tank/films/2024');
+  assert.equal(origin({ path: '/', fstype: 'ext4', device: '/dev/mapper/pve-vm--122--disk--1' }), '/dev/mapper/pve-vm--122--disk--1');
 
   // A folder without extended attributes says so in a sentence of its own.
   const details = node();

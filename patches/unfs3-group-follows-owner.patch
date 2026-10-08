@@ -1,0 +1,29 @@
+diff --git a/attr.c b/attr.c
+index cca0b9f..afcfe7b 100644
+--- a/attr.c
++++ b/attr.c
+@@ -490,11 +490,22 @@ nfsstat3 set_attr(const char *path, nfs_fh3 nfh, sattr3 new)
+  */
+ mode_t create_mode(sattr3 new)
+ {
++    mode_t mode;
++
+     if (new.mode.set_it == TRUE)
+-        return new.mode.set_mode3_u.mode;
++        mode = new.mode.set_mode3_u.mode;
+     else
+-        return S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IXGRP |
++        mode = S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IXGRP |
+                S_IROTH | S_IXOTH;
++
++    /*
++     * ShareCoveX: the group of a share reads and writes what its owner does.
++     * A client usually asks for rw-r--r--, and the group bits are also the
++     * limit of every ACL entry of the folder: without this, whoever has
++     * access to the folder through an ACL could not modify what is created
++     * here.
++     */
++    return mode | ((mode & S_IRWXU) >> 3);
+ }
+ 
+ /*

@@ -72,13 +72,30 @@ def container_environment():
     return {"type": "lxc" if is_lxc else "docker", "unprivileged": unprivileged}
 
 
+def mount_field(value):
+    return re.sub(r"\\([0-7]{3})", lambda match: chr(int(match.group(1), 8)), value)
+
+
 def mountpoints(lines):
     points = set()
     for line in lines:
         fields = line.split(" - ", 1)[0].split()
         if len(fields) >= 5:
-            points.add(re.sub(r"\\([0-7]{3})", lambda match: chr(int(match.group(1), 8)), fields[4]))
+            points.add(mount_field(fields[4]))
     return points
+
+
+def mount_sources(lines):
+    """Where each mount comes from: the path inside the filesystem it belongs
+    to, and that filesystem's type and device."""
+    sources = {}
+    for line in lines:
+        before, _, after = line.partition(" - ")
+        fields, origin = before.split(), after.split()
+        if len(fields) >= 5 and len(origin) >= 2:
+            sources[mount_field(fields[4])] = {"path": mount_field(fields[3]), "fstype": origin[0],
+                                               "device": mount_field(origin[1])}
+    return sources
 
 
 def command(args, password=None):
@@ -112,7 +129,10 @@ def vfs_handle_error(path):
         return f"{path}: name_to_handle_at failed ({os.strerror(ctypes.get_errno())})"
     # Some kernels reject O_PATH descriptors as mount_fd with EBADF even though
     # name_to_handle_at succeeds. Ganesha opens a regular filesystem descriptor.
-    mount_fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        mount_fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    except OSError:
+        return f"{path}: the folder cannot be opened"
     try:
         opened = libc.open_by_handle_at(mount_fd, ctypes.byref(handle), os.O_RDONLY | os.O_DIRECTORY)
         if opened < 0:
@@ -273,12 +293,16 @@ class Runtime:
         relative = validate_relative_path(relative)
         root = SHARES / mount_id
         current = root
-        for part in relative.split("/") if relative else []:
-            current = current / part
-            if current.is_symlink() or not current.is_dir():
-                raise ValueError("Folder is missing or uses a symbolic link")
-        if current.resolve() != root.resolve() and root.resolve() not in current.resolve().parents:
-            raise ValueError("Folder escapes its mount")
+        try:
+            for part in relative.split("/") if relative else []:
+                current = current / part
+                if current.is_symlink() or not current.is_dir():
+                    raise ValueError("Folder is missing or uses a symbolic link")
+            if current.resolve() != root.resolve() and root.resolve() not in current.resolve().parents:
+                raise ValueError("Folder escapes its mount")
+        except OSError as exc:
+            # The host does not let this container into the folder.
+            raise ValueError("Folder cannot be read by this container") from exc
         with open("/proc/self/mountinfo", encoding="utf-8") as stream:
             mounted = mountpoints(stream)
         if any(point.startswith(str(current) + "/") or
@@ -289,8 +313,11 @@ class Runtime:
     def tree(self, mount_id, relative=""):
         with self.lock:
             directory = self.directory(mount_id, relative)
-            children = sorted((entry for entry in directory.iterdir()
-                               if entry.is_dir() and not entry.is_symlink()), key=lambda entry: entry.name)
+            try:
+                children = sorted((entry for entry in directory.iterdir()
+                                   if entry.is_dir() and not entry.is_symlink()), key=lambda entry: entry.name)
+            except OSError as exc:
+                raise ValueError("Folder cannot be read by this container") from exc
             visible = children[:300]
             expandable = {}
             for child in visible:
@@ -365,6 +392,14 @@ class Runtime:
             except OSError:
                 continue
         return result
+
+    def mount_sources(self, mounted):
+        try:
+            with open("/proc/self/mountinfo", encoding="utf-8") as stream:
+                sources = mount_sources(stream)
+        except OSError:
+            return {}
+        return {mount_id: sources[str(SHARES / mount_id)] for mount_id in mounted if str(SHARES / mount_id) in sources}
 
     def share_permissions(self):
         result = {}
@@ -546,6 +581,7 @@ class Runtime:
                 "mounted_folders": mounted,
                 "ignored_mounts": self.ignored_mounts(),
                 "mount_permissions": self.mount_permissions(mounted),
+                "mount_sources": self.mount_sources(mounted),
                 "share_permissions": self.share_permissions(),
                 "services": services,
                 "nfs_v4_available": not bool(vfs_handle_error(str(SHARES / mounted[0]))) if mounted else False,

@@ -163,6 +163,7 @@ button.is-saved { background:#287fdc !important; }.button.is-failed,button.is-fa
 .route-editor fieldset > .message,.route-editor label > .message { margin:8px 0; }
 .protocol-section.section-locked { opacity:.45; }
 .protocol-section.section-locked .switch { cursor:not-allowed; }
+.added-hint { margin:0; padding:0 20px 18px; }.user-picks label:has(input:disabled),.switch input:disabled { cursor:not-allowed; }.user-picks input:disabled:checked { appearance:none; -webkit-appearance:none; width:14px; height:14px; margin:3px; border-radius:3px; background:var(--sea); position:relative; flex:none; }.user-picks input:disabled:checked:after { content:''; position:absolute; left:4.5px; top:1.5px; width:3px; height:7px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
 /* The language selector sits inside its own pill: it takes no ring of its own, and keyboard focus lights the pill. */
 .language-picker select:focus { background-color:transparent; box-shadow:none; outline:none; }
 .language-picker:has(select:focus-visible) { border-color:#9dcbff; }

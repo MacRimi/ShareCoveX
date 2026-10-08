@@ -183,7 +183,6 @@
   "Aqui aparecen los directorios montados en /shares. Pulsa un directorio para ver sus subcarpetas. Edita un montaje para compartirlo entero, o desactiva esa opcion y configura sus subcarpetas por separado. Dentro de un recurso compartido, una subcarpeta puede anadir el protocolo que al recurso le falta. Para sumar un directorio, agregalo como volumen Docker o punto de montaje OCI.": "Les dossiers montés sous /shares apparaissent ici. Cliquez sur un dossier pour voir ses sous-dossiers. Modifiez un montage pour le partager en entier, ou désactivez cette option et configurez ses sous-dossiers séparément. Dans une ressource partagée, un sous-dossier peut ajouter le protocole qui manque à la ressource. Pour ajouter un dossier, attachez-le comme volume Docker ou point de montage OCI.",
   "Incluida en el recurso superior": "Incluse dans la ressource parente",
   "Un destino Time Machine necesita su carpeta en exclusiva.": "Une destination Time Machine a besoin de son dossier en exclusivité.",
-  "Esta carpeta ya se comparte por SMB y NFS: no queda ningun protocolo que anadir.": "Ce dossier est déjà partagé en SMB et NFS : il ne reste aucun protocole à ajouter.",
   "Activa el protocolo que quieres anadir a esta carpeta.": "Activez le protocole que vous voulez ajouter à ce dossier.",
   "Acceso": "Accès",
   "Red": "Réseau",
@@ -353,5 +352,12 @@
   "Migracion pendiente: {error}": "Migration en attente: {error}",
   "Escuchando: {error}": "Écoute: {error}",
   "En marcha: {error}": "En cours: {error}",
-  "Error: {error}": "Erreur: {error}"
+  "Error: {error}": "Erreur: {error}",
+  "Folder cannot be read by this container": "Ce conteneur ne peut pas lire le dossier.",
+  "{path}: the folder cannot be opened": "{path} : le dossier ne peut pas être ouvert",
+  "Esta carpeta ya se comparte por Samba dentro de otro recurso de este montaje. El acceso que da ese recurso aparece marcado y no se puede retirar desde aqui; solo se anade: invitados de solo lectura, otros usuarios o permiso de escritura. A lo que anadas se entra por el nombre de este recurso.": "Ce dossier est déjà partagé via Samba dans une autre ressource de ce montage. L'accès que donne cette ressource apparaît coché et ne peut pas être retiré ici ; vous ajoutez seulement : invités en lecture seule, autres utilisateurs ou droit d'écriture. Ce que vous ajoutez est accessible par le nom de cette ressource.",
+  "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "Un dossier situé dans une ressource partagée ne peut qu'ajouter un accès via Samba : invités, autres utilisateurs ou droit d'écriture.",
+  "Marca el acceso que quieres anadir a esta carpeta.": "Choisissez l'accès que vous voulez ajouter à ce dossier.",
+  "Origen en el servidor: {origin}": "Origine sur le serveur : {origin}",
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Configuration supprimée. Le dossier est de nouveau partagé uniquement avec les réglages de la ressource parente."
 }

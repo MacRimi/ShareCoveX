@@ -191,6 +191,20 @@ class PanelTests(unittest.TestCase):
         for path in ("/", "/app.js", "/style.css", "/locales/en.json", "/healthz"):
             self.assertEqual(self.request("GET", path)[0].getheader("Cache-Control"), "no-store", path)
 
+    def test_an_unexpected_error_is_answered_instead_of_dropping_the_connection(self):
+        _, _, cookie = self.sign_in()
+        self.runtime.status.side_effect = PermissionError(13, "Permission denied")
+        try:
+            response, value = self.request("GET", "/api/state", cookie=cookie)
+            self.assertEqual(response.status, 500)
+            self.assertIn("Permission denied", value["error"])
+            with patch("builtins.print"):
+                response, value = self.request("POST", "/api/login", {"name": "admin", "password": PASSWORD})
+            self.assertEqual(response.status, 500)
+        finally:
+            self.runtime.status.side_effect = lambda: {"settings": {"shares": []}, "users": []}
+        self.assertEqual(self.request("GET", "/api/state", cookie=cookie)[0].status, 200)
+
     def test_health_is_reported_without_a_session(self):
         self.runtime.healthy.return_value = True
         response, value = self.request("GET", "/healthz")

@@ -183,7 +183,6 @@
   "Aqui aparecen los directorios montados en /shares. Pulsa un directorio para ver sus subcarpetas. Edita un montaje para compartirlo entero, o desactiva esa opcion y configura sus subcarpetas por separado. Dentro de un recurso compartido, una subcarpeta puede anadir el protocolo que al recurso le falta. Para sumar un directorio, agregalo como volumen Docker o punto de montaje OCI.": "Tu sa zobrazujú priečinky pripojené pod /shares. Kliknutím na priečinok zobrazíte jeho podpriečinky. Upravte pripojenie, ak ho chcete zdieľať celé, alebo túto možnosť vypnite a nastavte jeho podpriečinky samostatne. V zdieľanom zdroji môže podpriečinok pridať protokol, ktorý zdroju chýba. Ak chcete pridať priečinok, pripojte ho ako zväzok Docker alebo prípojný bod OCI.",
   "Incluida en el recurso superior": "Súčasť nadradeného zdroja",
   "Un destino Time Machine necesita su carpeta en exclusiva.": "Cieľ Time Machine potrebuje svoj priečinok výhradne pre seba.",
-  "Esta carpeta ya se comparte por SMB y NFS: no queda ningun protocolo que anadir.": "Tento priečinok sa už zdieľa cez SMB aj NFS: nezostáva žiadny protokol na pridanie.",
   "Activa el protocolo que quieres anadir a esta carpeta.": "Zapnite protokol, ktorý chcete pridať k tomuto priečinku.",
   "Acceso": "Prístup",
   "Red": "Sieť",
@@ -353,5 +352,12 @@
   "Migracion pendiente: {error}": "Čaká sa na migráciu: {error}",
   "Escuchando: {error}": "Počúvanie: {error}",
   "En marcha: {error}": "Prebieha: {error}",
-  "Error: {error}": "Chyba: {error}"
+  "Error: {error}": "Chyba: {error}",
+  "Folder cannot be read by this container": "Tento kontajner nemôže čítať priečinok.",
+  "{path}: the folder cannot be opened": "{path}: priečinok sa nedá otvoriť",
+  "Esta carpeta ya se comparte por Samba dentro de otro recurso de este montaje. El acceso que da ese recurso aparece marcado y no se puede retirar desde aqui; solo se anade: invitados de solo lectura, otros usuarios o permiso de escritura. A lo que anadas se entra por el nombre de este recurso.": "Tento priečinok sa už zdieľa cez Sambu v rámci iného zdroja tohto pripojenia. Prístup, ktorý dáva ten zdroj, je označený a tu ho nemožno odobrať; iba sa pridáva: hostia len na čítanie, ďalší používatelia alebo oprávnenie na zápis. K tomu, čo pridáte, sa pristupuje cez názov tohto zdroja.",
+  "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "Priečinok v zdieľanom zdroji môže cez Sambu iba pridať prístup: hostí, ďalších používateľov alebo oprávnenie na zápis.",
+  "Marca el acceso que quieres anadir a esta carpeta.": "Vyberte prístup, ktorý chcete pridať k tomuto priečinku.",
+  "Origen en el servidor: {origin}": "Zdroj na serveri: {origin}",
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfigurácia odstránená. Priečinok sa znova zdieľa iba s nastaveniami nadradeného zdroja."
 }

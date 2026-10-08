@@ -4,8 +4,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     autoconf automake bison ca-certificates flex gcc git libc6-dev libtirpc-dev make pkg-config \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src/unfs3
+COPY patches/unfs3-*.patch /src/patches/
 RUN git clone https://github.com/unfs3/unfs3.git . \
     && git checkout --detach ec1660ba33c80d5c67131e163e68834c1a10e243 \
+    && git apply /src/patches/unfs3-*.patch \
     && ./bootstrap && ./configure && make -j2
 
 FROM debian:bookworm-slim

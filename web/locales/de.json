@@ -183,7 +183,6 @@
   "Aqui aparecen los directorios montados en /shares. Pulsa un directorio para ver sus subcarpetas. Edita un montaje para compartirlo entero, o desactiva esa opcion y configura sus subcarpetas por separado. Dentro de un recurso compartido, una subcarpeta puede anadir el protocolo que al recurso le falta. Para sumar un directorio, agregalo como volumen Docker o punto de montaje OCI.": "Hier erscheinen die unter /shares eingehängten Verzeichnisse. Klicken Sie auf ein Verzeichnis, um seine Unterordner zu sehen. Bearbeiten Sie einen Einhängepunkt, um ihn vollständig freizugeben, oder deaktivieren Sie diese Option und konfigurieren Sie seine Unterordner einzeln. Innerhalb einer freigegebenen Ressource kann ein Unterordner das Protokoll hinzufügen, das der Ressource fehlt. Um ein Verzeichnis hinzuzufügen, binden Sie es als Docker-Volume oder OCI-Einhängepunkt ein.",
   "Incluida en el recurso superior": "In der übergeordneten Ressource enthalten",
   "Un destino Time Machine necesita su carpeta en exclusiva.": "Ein Time-Machine-Ziel benötigt seinen Ordner exklusiv.",
-  "Esta carpeta ya se comparte por SMB y NFS: no queda ningun protocolo que anadir.": "Dieser Ordner wird bereits über SMB und NFS freigegeben: Es bleibt kein Protokoll zum Hinzufügen.",
   "Activa el protocolo que quieres anadir a esta carpeta.": "Aktivieren Sie das Protokoll, das Sie diesem Ordner hinzufügen möchten.",
   "Acceso": "Zugriff",
   "Red": "Netzwerk",
@@ -353,5 +352,12 @@
   "Migracion pendiente: {error}": "Ausstehende Migration: {error}",
   "Escuchando: {error}": "Zuhören: {error}",
   "En marcha: {error}": "In Bearbeitung: {error}",
-  "Error: {error}": "Fehler: {error}"
+  "Error: {error}": "Fehler: {error}",
+  "Folder cannot be read by this container": "Dieser Container kann den Ordner nicht lesen.",
+  "{path}: the folder cannot be opened": "{path}: Der Ordner kann nicht geöffnet werden",
+  "Esta carpeta ya se comparte por Samba dentro de otro recurso de este montaje. El acceso que da ese recurso aparece marcado y no se puede retirar desde aqui; solo se anade: invitados de solo lectura, otros usuarios o permiso de escritura. A lo que anadas se entra por el nombre de este recurso.": "Dieser Ordner wird bereits über Samba innerhalb einer anderen Ressource dieses Einhängepunkts freigegeben. Der Zugriff, den jene Ressource gewährt, ist markiert und lässt sich hier nicht entfernen; es wird nur hinzugefügt: Gäste mit Lesezugriff, weitere Benutzer oder Schreibrecht. Was Sie hinzufügen, wird über den Namen dieser Ressource erreicht.",
+  "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "Ein Ordner innerhalb einer freigegebenen Ressource kann über Samba nur Zugriff hinzufügen: Gäste, weitere Benutzer oder Schreibrecht.",
+  "Marca el acceso que quieres anadir a esta carpeta.": "Wählen Sie den Zugriff, den Sie diesem Ordner hinzufügen möchten.",
+  "Origen en el servidor: {origin}": "Quelle auf dem Server: {origin}",
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfiguration gelöscht. Der Ordner wird wieder nur mit den Einstellungen der übergeordneten Ressource freigegeben."
 }

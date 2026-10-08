@@ -150,14 +150,16 @@ cat /proc/self/uid_map
 cat /proc/self/gid_map
 ```
 
-Prepare ownership or ACLs deliberately on the host. ShareCoveX reports the effective state but never applies `chown`, `chmod`, or `setfacl` to mounted data. An explicit host ACL can preserve the existing owner while granting the mapped service identity access:
+What is created through ShareCoveX takes the permissions of the folder it is created in, over SMB and over NFS: a file in a folder its group writes to is writable by that group, and one in a folder everybody reads is readable by everybody. Nothing ends up less reachable than the place it lives in, and a file edited in place keeps its owner and its permissions. New files belong to the collaborative identity, or to the Samba user that created them when collaborative mode is off.
+
+Prepare ownership or ACLs deliberately on the host. ShareCoveX reports the effective state but never applies `chown`, `chmod`, or `setfacl` to mounted data. An explicit host ACL preserves the existing owner and permissions while granting access to the mapped service identity and, in an unprivileged container, to its root user, which lists the folders in the panel and answers the access checks of NFS clients. With a map starting at `100000`:
 
 ```bash
-setfacl -R -m u:101000:rwX,m::rwx /srv/shares/media
-find /srv/shares/media -type d -exec setfacl -m d:u:101000:rwx,d:m::rwx {} +
+setfacl -R -P -m u:101000:rwX,g:101000:rwX,u:100000:rwX,g:100000:rwX /srv/shares/media
+find /srv/shares/media -xdev -type d -exec setfacl -m d:u:101000:rwx,d:g:101000:rwx,d:u:100000:rwx,d:g:100000:rwx {} +
 ```
 
-Adapt the path and mapped ID to your installation. Existing files and new-file inheritance are separate concerns, so verify both from real SMB and NFS clients.
+To let the current owner of the folder keep full access to what is created through ShareCoveX, add it to the inherited entries as well, for example `d:u:1001:rwx` for an owner with UID 1001. Adapt the path and the IDs to your installation, and verify from real SMB and NFS clients. The Proxmox installation from ProxMenux offers to add this rule when a shared host directory belongs to another user.
 
 ## Protocol notes
 
@@ -177,9 +179,11 @@ NFSv4 uses Ganesha when the environment passes the runtime capability probe and 
 
 ### Folders inside a shared folder
 
-The resource list shows each mount folded; clicking a mount opens its subfolders, and each of them opens the same way. A subfolder of a shared folder shows the protocols that reach it, and its settings offer only the protocol the outer share does not publish. The added protocol has its own settings: NFS clients and identity mapping, or Samba users and write policy.
+The resource list shows each mount folded; clicking a mount opens its subfolders, and each of them opens the same way. Each mount shows where it comes from on the server: for a directory on the server's system disk, its full path followed by the disk; for a directory on another disk or volume, the path inside it followed by its name; for a ZFS dataset, the dataset and the folder inside it. A subfolder of a shared folder shows the protocols that reach it, and its settings offer what can still be added: the protocol the outer share does not publish, with its own settings, and more access over Samba.
 
-A protocol that the outer share already publishes cannot be configured again on a subfolder, because the subfolder stays reachable through the outer share with the outer share's rules. To give subfolders different users or write policies for the same protocol, leave the mount unshared and publish its subfolders one by one. A Time Machine destination keeps its folder to itself: nothing is shared inside it, and it cannot sit inside another share.
+Over Samba a subfolder can add access that the outer share does not give: read-only guests, other users, or write permission. It becomes a resource with its own name, and what was added is reached through that name; the outer share keeps its own users and permissions over the whole folder. A share that asks for a user can so have one subfolder open to guests, and a share open to guests read-only can have one subfolder where a user writes.
+
+A subfolder never restricts what the outer share gives, because it stays reachable through the outer share with the outer share's rules. To give subfolders narrower users or write policies, leave the mount unshared and publish its subfolders one by one. An NFS export cannot be repeated inside another one. A Time Machine destination keeps its folder to itself: nothing is shared inside it, and it cannot sit inside another share.
 
 ### Time Machine
 

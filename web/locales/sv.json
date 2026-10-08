@@ -183,7 +183,6 @@
   "Aqui aparecen los directorios montados en /shares. Pulsa un directorio para ver sus subcarpetas. Edita un montaje para compartirlo entero, o desactiva esa opcion y configura sus subcarpetas por separado. Dentro de un recurso compartido, una subcarpeta puede anadir el protocolo que al recurso le falta. Para sumar un directorio, agregalo como volumen Docker o punto de montaje OCI.": "Här visas katalogerna som är monterade under /shares. Klicka på en katalog för att se dess undermappar. Redigera en montering för att dela hela, eller stäng av det alternativet och konfigurera dess undermappar var för sig. Inuti en delad resurs kan en undermapp lägga till det protokoll som resursen saknar. Lägg till en katalog genom att ansluta den som Docker-volym eller OCI-monteringspunkt.",
   "Incluida en el recurso superior": "Ingår i resursen ovanför",
   "Un destino Time Machine necesita su carpeta en exclusiva.": "Ett Time Machine-mål behöver sin mapp för sig självt.",
-  "Esta carpeta ya se comparte por SMB y NFS: no queda ningun protocolo que anadir.": "Den här mappen delas redan via SMB och NFS: det finns inget protokoll kvar att lägga till.",
   "Activa el protocolo que quieres anadir a esta carpeta.": "Slå på det protokoll du vill lägga till för den här mappen.",
   "Acceso": "Åtkomst",
   "Red": "Nätverk",
@@ -353,5 +352,12 @@
   "Migracion pendiente: {error}": "Väntar på migrering: {error}",
   "Escuchando: {error}": "Lyssnar: {error}",
   "En marcha: {error}": "Pågår: {error}",
-  "Error: {error}": "Fel: {error}"
+  "Error: {error}": "Fel: {error}",
+  "Folder cannot be read by this container": "Den här containern kan inte läsa mappen.",
+  "{path}: the folder cannot be opened": "{path}: mappen kan inte öppnas",
+  "Esta carpeta ya se comparte por Samba dentro de otro recurso de este montaje. El acceso que da ese recurso aparece marcado y no se puede retirar desde aqui; solo se anade: invitados de solo lectura, otros usuarios o permiso de escritura. A lo que anadas se entra por el nombre de este recurso.": "Den här mappen delas redan via Samba inuti en annan resurs i den här monteringen. Åtkomsten som den resursen ger visas markerad och kan inte tas bort här; du lägger bara till: gäster med läsbehörighet, andra användare eller skrivbehörighet. Det du lägger till nås via namnet på den här resursen.",
+  "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "En mapp inuti en delad resurs kan bara lägga till åtkomst via Samba: gäster, andra användare eller skrivbehörighet.",
+  "Marca el acceso que quieres anadir a esta carpeta.": "Välj den åtkomst du vill lägga till för den här mappen.",
+  "Origen en el servidor: {origin}": "Källa på servern: {origin}",
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfigurationen har tagits bort. Mappen delas åter enbart med inställningarna för resursen ovanför."
 }
