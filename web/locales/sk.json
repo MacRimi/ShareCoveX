@@ -1,4 +1,5 @@
 {
+  "RPC discovery service could not start": "Nepodarilo sa spustiť službu zisťovania RPC",
   "Un lugar para tus archivos, varios caminos para llegar.": "Jedno miesto pre vaše súbory, niekoľko spôsobov, ako sa tam dostať.",
   "Container": "kontajner",
   "ARCHIVOS / RED LOCAL": "SÚBORY / MIESTNA SIEŤ",

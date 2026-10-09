@@ -266,6 +266,25 @@ def service(code=None):
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_nfs_registers_with_rpcbind_and_keeps_discovery_running(self):
+        runtime = self.runtime()
+        runtime.settings["shares"][0]["nfs_enabled"] = True
+        runtime.processes["smb"] = service()
+        def start_service(name, args):
+            runtime.processes[name] = service()
+        with (patch.object(Runtime, "mounted_folders", return_value=["data"]),
+              patch.object(Runtime, "directory", return_value=Path("/shares/data")),
+              patch.object(Runtime, "_start", side_effect=start_service) as start,
+              patch("sharecovex.runtime.time.sleep")):
+            runtime.sync()
+            self.assertEqual([c.args[0] for c in start.call_args_list], ["rpcbind", "nfs"])
+            self.assertNotIn("-p", start.call_args_list[-1].args[1])
+            runtime.sync()
+            self.assertEqual(start.call_count, 2)
+            runtime.processes["rpcbind"] = service(code=1)
+            runtime.sync()
+            self.assertEqual([c.args[0] for c in start.call_args_list[-2:]], ["rpcbind", "nfs"])
+
     def runtime(self):
         runtime = object.__new__(Runtime)
         runtime.lock = threading.RLock()

@@ -1,4 +1,5 @@
 {
+  "RPC discovery service could not start": "Le service de découverte RPC n’a pas pu démarrer",
   "Un lugar para tus archivos, varios caminos para llegar.": "Un seul endroit pour vos fichiers, plusieurs façons d'y accéder.",
   "Container": "Conteneur",
   "ARCHIVOS / RED LOCAL": "FICHIERS / RÉSEAU LOCAL",

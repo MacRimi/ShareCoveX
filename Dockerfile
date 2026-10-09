@@ -30,7 +30,7 @@ COPY sharecovex /app/sharecovex
 COPY web /app/web
 RUN mkdir -p /config /shares /run/samba /run/ganesha /run/rpcbind /var/lib/samba/private \
     && ln -sf /proc/mounts /etc/mtab
-EXPOSE 8080 445 2049 20048
+EXPOSE 8080 445 111/tcp 111/udp 2049 20048
 VOLUME ["/config"]
 ARG VERSION=dev
 ENV SHARECOVEX_VERSION=$VERSION

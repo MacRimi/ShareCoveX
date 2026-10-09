@@ -50,7 +50,7 @@ ShareCoveX never creates host mounts, browses arbitrary host paths, deletes shar
 
 ## Quick start with Docker
 
-Requirements: Linux, Docker Engine, Docker Compose, free TCP ports `445`, `2049`, `20048`, and a trusted local network.
+Requirements: Linux, Docker Engine, Docker Compose, free TCP ports `445`, `111`, `2049`, `20048`, UDP port `111`, and a trusted local network.
 
 ```bash
 git clone https://github.com/MacRimi/ShareCoveX.git
@@ -92,6 +92,8 @@ services:
     ports:
       - "8080:8080/tcp"
       - "445:445/tcp"
+      - "111:111/tcp"
+      - "111:111/udp"
       - "2049:2049/tcp"
       - "20048:20048/tcp"
     volumes:
@@ -114,7 +116,7 @@ Recommended OCI layout:
 | `/shares/media` | First host directory | At least one share |
 | `/shares/<id>` | Additional host directories | Optional, repeatable |
 
-Expose TCP `8080`, `445`, `2049`, and `20048` to the trusted LAN. Give the container a stable address so SMB/NFS clients and allowed CIDR rules do not change unexpectedly.
+Expose TCP `8080`, `445`, `111`, `2049`, and `20048`, and UDP `111` to the trusted LAN. Give the container a stable address so SMB/NFS clients and allowed CIDR rules do not change unexpectedly.
 
 ### Proxmox compatibility
 
@@ -172,7 +174,7 @@ SMB1 is not offered. The server-wide minimum and maximum can be selected in Sett
 NFS uses AUTH_SYS identities and trusted client IP/CIDR rules, not Samba users. NFSv3 uses UNFS3 over TCP without NLM locking. A compatible client command is:
 
 ```bash
-mount -t nfs -o vers=3,proto=tcp,mountproto=tcp,port=2049,mountport=2049,nolock SERVER:/shares/media /mnt/media
+mount -t nfs -o vers=3,proto=tcp,mountproto=tcp,nolock SERVER:/shares/media /mnt/media
 ```
 
 NFSv4 uses Ganesha when the environment passes the runtime capability probe and is served as NFSv4.0. Clients using automatic version negotiation can fall back to 4.0; clients that explicitly require 4.1 or 4.2 (`vers=4.1` or `vers=4.2`) are refused. Neither profile currently provides Kerberos.

@@ -517,7 +517,23 @@ class Runtime:
                     self._stop(name)
                     if name == "nfs":
                         self._stop("rpcbind")
-                elif not process or process.poll() is not None:
+                    continue
+                if name == "nfs":
+                    rpcbind = self.processes.get("rpcbind")
+                    if not rpcbind or rpcbind.poll() is not None:
+                        if time.monotonic() - self.last_start.get("rpcbind", -30) < 30:
+                            continue
+                        # Registrations disappear with rpcbind: restart NFS too
+                        # so both backends register their services again.
+                        self._stop("nfs")
+                        process = None
+                        self._start("rpcbind", ["rpcbind", "-f"])
+                        time.sleep(0.2)
+                        rpcbind = self.processes.get("rpcbind")
+                        if not rpcbind or rpcbind.poll() is not None:
+                            self.errors["nfs"] = "RPC discovery service could not start"
+                            continue
+                if not process or process.poll() is not None:
                     if process and process.poll() is not None:
                         self.errors[name] = f"Exited with code {process.returncode}"
                         if time.monotonic() - self.last_start.get(name, 0) < 30:
@@ -526,20 +542,10 @@ class Runtime:
                         args = ["smbd", "--foreground", "--no-process-group", "--debug-stdout",
                                 "-s", str(CONFIG / "smb.conf")]
                     elif self.settings["nfs_backend"] == "ganesha-vfs":
-                        rpcbind = self.processes.get("rpcbind")
-                        if not rpcbind or rpcbind.poll() is not None:
-                            self._start("rpcbind", ["rpcbind", "-f", "-w"])
-                            time.sleep(0.2)
                         args = ["ganesha.nfsd", "-F", "-L", "STDOUT", "-f", str(CONFIG / "ganesha.conf")]
                     else:
-                        self._stop("rpcbind")
-                        args = ["unfsd", "-d", "-t", "-p", "-n", "2049", "-m", "2049", "-e", str(CONFIG / "exports")]
+                        args = ["unfsd", "-d", "-t", "-n", "2049", "-m", "2049", "-e", str(CONFIG / "exports")]
                     self._start(name, args)
-                    if name == "nfs" and self.settings["nfs_backend"] == "ganesha-vfs":
-                        # Debian's Ganesha registers through rpcbind at startup,
-                        # but NFSv4 clients connect directly to TCP/2049.
-                        time.sleep(1)
-                        self._stop("rpcbind")
             smb = self.processes.get("smb")
             announce = (self.settings["mdns_enabled"] and smb is not None
                         and smb.poll() is None)
