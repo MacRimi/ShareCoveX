@@ -1,4 +1,5 @@
 {
+  "192.168.0.10\n192.168.0.20\n192.168.1.0/24": "192.168.0.10\n192.168.0.20\n192.168.1.0/24",
   "RPC discovery service could not start": "Nepodarilo sa spustiť službu zisťovania RPC",
   "Un lugar para tus archivos, varios caminos para llegar.": "Jedno miesto pre vaše súbory, niekoľko spôsobov, ako sa tam dostať.",
   "Container": "kontajner",
@@ -51,7 +52,7 @@
   "Compartir por NFS": "Zdieľať cez NFS",
   "Acceso y permisos NFS solo para esta ruta. NFS usa las redes y los UID/GID indicados aqui, no los usuarios Samba.": "Prístup a povolenia NFS iba pre túto cestu. NFS používa tu uvedené siete a UID/GID, nie používateľov Samby.",
   "Clientes NFS permitidos": "Povolení klienti NFS",
-  "Una IPv4 o red CIDR por linea; necesario si activas NFS.": "Jedna sieť IPv4 alebo CIDR na linku; Vyžaduje sa, ak povolíte NFS.",
+  "Una IPv4 o red CIDR por linea; necesario si activas NFS.": "Zadajte jednu adresu IPv4 alebo sieť CIDR na riadok. Položky môžete oddeliť aj čiarkami, nie však iba medzerami. Povinné pri zapnutom NFS.",
   "El modo colaborativo esta activo: NFS usa la identidad compartida configurada en Ajustes para que sus archivos sean editables tambien por Samba.": "Kolaboratívny režim je aktívny: NFS používa zdieľanú identitu nakonfigurovanú v Nastaveniach, takže vaše súbory je možné upravovať aj pomocou Samby.",
   "Identidad NFS": "Identita NFS",
   "Root squash: root cliente pasa a nobody": "Root squash: klientsky root sa stane nikým",

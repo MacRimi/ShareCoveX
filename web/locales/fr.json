@@ -1,4 +1,5 @@
 {
+  "192.168.0.10\n192.168.0.20\n192.168.1.0/24": "192.168.0.10\n192.168.0.20\n192.168.1.0/24",
   "RPC discovery service could not start": "Le service de découverte RPC n’a pas pu démarrer",
   "Un lugar para tus archivos, varios caminos para llegar.": "Un seul endroit pour vos fichiers, plusieurs façons d'y accéder.",
   "Container": "Conteneur",
@@ -51,7 +52,7 @@
   "Compartir por NFS": "Partager via NFS",
   "Acceso y permisos NFS solo para esta ruta. NFS usa las redes y los UID/GID indicados aqui, no los usuarios Samba.": "Accès NFS et autorisations pour ce chemin uniquement. NFS utilise les réseaux et les UID/GID indiqués ici, pas les utilisateurs Samba.",
   "Clientes NFS permitidos": "Clients NFS autorisés",
-  "Una IPv4 o red CIDR por linea; necesario si activas NFS.": "Un réseau IPv4 ou CIDR par ligne ; Obligatoire si vous activez NFS.",
+  "Una IPv4 o red CIDR por linea; necesario si activas NFS.": "Saisissez une adresse IPv4 ou un réseau CIDR par ligne. Vous pouvez aussi les séparer par des virgules, mais pas uniquement par des espaces. Obligatoire lorsque NFS est activé.",
   "El modo colaborativo esta activo: NFS usa la identidad compartida configurada en Ajustes para que sus archivos sean editables tambien por Samba.": "Le mode collaboratif est actif : NFS utilise l'identité partagée configurée dans Paramètres afin que vos fichiers soient également modifiables par Samba.",
   "Identidad NFS": "Identité NFS",
   "Root squash: root cliente pasa a nobody": "Root squash : la racine du client devient personne",

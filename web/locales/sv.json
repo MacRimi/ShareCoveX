@@ -1,4 +1,5 @@
 {
+  "192.168.0.10\n192.168.0.20\n192.168.1.0/24": "192.168.0.10\n192.168.0.20\n192.168.1.0/24",
   "RPC discovery service could not start": "RPC-identifieringstjänsten kunde inte startas",
   "Un lugar para tus archivos, varios caminos para llegar.": "En plats för dina filer, flera sätt att komma dit.",
   "Container": "Behållare",
@@ -51,7 +52,7 @@
   "Compartir por NFS": "Dela över NFS",
   "Acceso y permisos NFS solo para esta ruta. NFS usa las redes y los UID/GID indicados aqui, no los usuarios Samba.": "NFS-åtkomst och behörigheter endast för denna sökväg. NFS använder de nätverk och UID/GID som anges här, inte Samba-användarna.",
   "Clientes NFS permitidos": "NFS-klienter tillåtna",
-  "Una IPv4 o red CIDR por linea; necesario si activas NFS.": "Ett IPv4- eller CIDR-nätverk per linje; Krävs om du aktiverar NFS.",
+  "Una IPv4 o red CIDR por linea; necesario si activas NFS.": "Ange en IPv4-adress eller ett CIDR-nätverk per rad. Du kan också skilja posterna åt med kommatecken, men inte enbart med mellanslag. Krävs när NFS är aktiverat.",
   "El modo colaborativo esta activo: NFS usa la identidad compartida configurada en Ajustes para que sus archivos sean editables tambien por Samba.": "Samarbetsläge är aktivt: NFS använder den delade identiteten som konfigurerats i Inställningar så att dina filer också kan redigeras av Samba.",
   "Identidad NFS": "NFS-identitet",
   "Root squash: root cliente pasa a nobody": "Root squash: klientroten blir ingen",
