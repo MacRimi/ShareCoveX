@@ -415,9 +415,9 @@ def avahi_conf(value, interface="eth0"):
 
 
 def discovery_model(value):
-    has_time_machine = any(share.get("enabled", True) and share.get("time_machine", False)
-                           for share in value["shares"])
-    return "TimeCapsule8,119" if has_time_machine else "Xserve"
+    # Finder's model describes the entire server, not an individual share.
+    # Time Machine destinations are advertised separately through _adisk.
+    return "Xserve"
 
 
 def time_machine_shares(value):

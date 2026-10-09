@@ -13,6 +13,8 @@ function element(selector) {
       classList: { toggle() {} },
       querySelectorAll() { return []; },
       addEventListener(type, handler) { this.listeners[type] = handler; },
+      setAttribute(name, value) { this[name] = value; },
+      removeAttribute(name) { delete this[name]; },
       append() {},
       replaceChildren() {},
       reset() {},
@@ -135,6 +137,22 @@ async function submit() {
   assert.equal(element('#smb-protocol-summary').textContent, 'SMB 3.1.1');
   assert.equal(element('#nfs-protocol-summary').textContent, 'NFSv3 + NFSv4');
   assert.equal(element('#version').textContent, '');
+  // The shortcut opens the actual Samba users settings card and focuses creation.
+  const usersBody = { hidden: true };
+  const usersToggle = { setAttribute(name, value) { this[name] = value; } };
+  let usersCardOpen = false, usernameFocused = false;
+  element('#user-form').closest = () => ({
+    querySelector(selector) { return selector === '.fold-body' ? usersBody : usersToggle; },
+    classList: { toggle(name, value) { usersCardOpen = value; } },
+    scrollIntoView() {}
+  });
+  element('#username').focus = () => { usernameFocused = true; };
+  element('#open-smb-users').listeners.click();
+  assert.equal(element('#settings-view').hidden, false);
+  assert.equal(usersBody.hidden, false);
+  assert.equal(usersCardOpen, true);
+  assert.equal(usersToggle['aria-expanded'], 'true');
+  assert.equal(usernameFocused, true);
   // Settings: what is needed first comes first, and every card starts folded.
   const order = ['Usuarios Samba', 'Administradores', 'Nombre y descubrimiento', 'Time Machine', 'Identidad y permisos',
     'Compatibilidad de protocolo', 'Protocolos NFS'].map(title => markup.indexOf(`<h2>${title}</h2>`));
@@ -556,6 +574,13 @@ async function submit() {
 
   // A mount says where it comes from on the server: the folder inside its disk, or the ZFS dataset.
   const origin = vm.runInContext('mountOrigin', context);
+  const nfsAddress = vm.runInContext('nfsAddress', context);
+  context.location.hostname = '192.168.0.40';
+  assert.equal(nfsAddress('backups', ''), '192.168.0.40:/shares/backups');
+  assert.equal(nfsAddress('media', 'movies'), '192.168.0.40:/shares/media/movies');
+  context.location.hostname = '2001:db8::40';
+  assert.equal(nfsAddress('backups', ''), '[2001:db8::40]:/shares/backups');
+  context.location.hostname = '';
   assert.equal(origin({ path: '/mnt/data/media', fstype: 'ext4', device: '/dev/mapper/pve-root' }), '/mnt/data/media');
   assert.equal(origin({ path: '/', fstype: 'zfs', device: 'tank/films' }), 'tank/films');
   assert.equal(origin({ path: '/2024', fstype: 'zfs', device: 'tank/films' }), 'tank/films/2024');

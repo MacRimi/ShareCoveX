@@ -358,5 +358,6 @@
   "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "En mapp inuti en delad resurs kan bara lägga till åtkomst via Samba: gäster, andra användare eller skrivbehörighet.",
   "Marca el acceso que quieres anadir a esta carpeta.": "Välj den åtkomst du vill lägga till för den här mappen.",
   "Origen en el servidor: {origin}": "Källa på servern: {origin}",
-  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfigurationen har tagits bort. Mappen delas åter enbart med inställningarna för resursen ovanför."
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfigurationen har tagits bort. Mappen delas åter enbart med inställningarna för resursen ovanför.",
+  "Ruta NFS": "NFS-sökväg"
 }

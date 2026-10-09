@@ -82,6 +82,11 @@ function appendBadges(row, share, inherited) {
   if (badges.children.length) row.append(badges);
 }
 const routePath = (id, path) => `/shares/${id}${path ? '/' + path : ''}`;
+function nfsAddress(id, path) {
+  let host = location.hostname || '';
+  if (host.includes(':') && !host.startsWith('[')) host = '[' + host + ']';
+  return (host ? host + ':' : '') + routePath(id, path);
+}
 const permissionsText = access => access.writable ? formatMessage('UID:GID {uid}:{gid} · {mode} · Compatible con escritura', access) : formatMessage('UID:GID {uid}:{gid} · {mode} · Sin escritura para {shared_uid}:{shared_gid}', access);
 // A fixed sentence in its own element, so the language catalogue can match it.
 // Where a mount comes from on the server. A ZFS dataset is named with the
@@ -346,6 +351,10 @@ function showProtocolOptions() {
   showResourceMode();
   showNfsMapping();
   showSmbAccess();
+  const saved = activeTarget && current?.settings.shares.find(share =>
+    share.id === activeTarget.id && share.path === activeTarget.path);
+  $('#nfs-resource-address').hidden = !saved?.nfs_enabled || saved.enabled === false;
+  if (saved?.nfs_enabled) $('#nfs-resource-path').textContent = nfsAddress(saved.id, saved.path);
 }
 
 // What a share above or below this route already gives is not offered again:
@@ -591,6 +600,17 @@ function renderRoute(id, path, parent, root = false, browsingRoot = false, open 
   }
   const access = root ? current.mount_permissions?.[id] : current.share_permissions?.[key];
   if (share && access) appendPermissions(label, access);
+  if (share?.enabled !== false && share?.nfs_enabled) {
+    const endpoint = document.createElement('small');
+    endpoint.className = 'route-nfs-endpoint';
+    const caption = document.createElement('span');
+    caption.textContent = 'Ruta NFS';
+    const address = document.createElement('code');
+    address.setAttribute('data-i18n-ignore', '');
+    address.textContent = nfsAddress(id, path);
+    endpoint.append(caption, address);
+    label.append(endpoint);
+  }
   row.append(label);
   appendBadges(row, share, inherited);
   if (selected) {
@@ -1207,6 +1227,15 @@ for (const panel of document.querySelectorAll?.('.fold') || []) {
 }
 $('#tab-resources').addEventListener('click', () => view('resources'));
 $('#tab-settings').addEventListener('click', () => view('settings'));
+$('#open-smb-users').addEventListener('click', () => {
+  view('settings');
+  const panel = $('#user-form').closest('.fold');
+  panel.querySelector('.fold-body').hidden = false;
+  panel.classList.toggle('open', true);
+  panel.querySelector('.tree-expand').setAttribute('aria-expanded', 'true');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  $('#username').focus({ preventScroll: true });
+});
 
 $('#user-form').addEventListener('submit', async event => {
   event.preventDefault();

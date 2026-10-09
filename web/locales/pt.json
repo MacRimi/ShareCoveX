@@ -358,5 +358,6 @@
   "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "Uma pasta dentro de um recurso partilhado só pode adicionar acesso por Samba: convidados, outros utilizadores ou permissão de escrita.",
   "Marca el acceso que quieres anadir a esta carpeta.": "Escolha o acesso que quer adicionar a esta pasta.",
   "Origen en el servidor: {origin}": "Origem no servidor: {origin}",
-  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Configuração eliminada. A pasta volta a ser partilhada apenas com as definições do recurso superior."
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Configuração eliminada. A pasta volta a ser partilhada apenas com as definições do recurso superior.",
+  "Ruta NFS": "Caminho NFS"
 }

@@ -168,6 +168,9 @@ button.is-saved { background:#287fdc !important; }.button.is-failed,button.is-fa
 /* The language selector sits inside its own pill: it takes no ring of its own, and keyboard focus lights the pill. */
 .language-picker select:focus { background-color:transparent; box-shadow:none; outline:none; }
 .language-picker:has(select:focus-visible) { border-color:#9dcbff; }
+.route-nfs-endpoint code { user-select:all; overflow-wrap:anywhere; }
+.route-nfs-endpoint { display:flex; gap:8px; flex-wrap:wrap; }
+#open-smb-users { margin-top:10px; }
 /* Settings: grouped cards, folded until clicked, each with a one-line summary. */
 .settings-group { margin:34px 4px 0; color:#8fa0b3; font:12px "SFMono-Regular",Consolas,monospace; letter-spacing:.14em; text-transform:uppercase; }
 .settings-group + .share-panel { margin-top:12px; }

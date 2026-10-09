@@ -177,6 +177,8 @@ mount -t nfs -o vers=3,proto=tcp,mountproto=tcp,port=2049,mountport=2049,nolock 
 
 NFSv4 uses Ganesha when the environment passes the runtime capability probe and is served as NFSv4.0. Clients using automatic version negotiation can fall back to 4.0; clients that explicitly require 4.1 or 4.2 (`vers=4.1` or `vers=4.2`) are refused. Neither profile currently provides Kerberos.
 
+Each published NFS resource displays its client path in the panel, for example `/shares/backups` or `/shares/media/movies`. Use the container's IP address or reachable hostname as the NFS server, and this path as the export path. The source path on the Proxmox host is not the export path. If the panel is accessed through a reverse proxy or SSH tunnel, use the container address rather than the panel address. For example: `mount -t nfs -o vers=3 192.168.0.40:/shares/backups /mnt/backups` (the mount point must already exist). For NFSv4.0, use `vers=4.0` when that protocol is enabled.
+
 ### Folders inside a shared folder
 
 The resource list shows each mount folded; clicking a mount opens its subfolders, and each of them opens the same way. Each mount shows where it comes from on the server: for a directory on the server's system disk, its full path followed by the disk; for a directory on another disk or volume, the path inside it followed by its name; for a ZFS dataset, the dataset and the folder inside it. A subfolder of a shared folder shows the protocols that reach it, and its settings offer what can still be added: the protocol the outer share does not publish, with its own settings, and more access over Samba.
@@ -190,6 +192,8 @@ A subfolder never restricts what the outer share gives, because it stays reachab
 A Time Machine destination must be a dedicated writable SMB-only resource with at least one authenticated Samba user, no guests, and no NFS. ShareCoveX passes the configured maximum size to Samba so macOS can recycle backups: a general size in Settings, and optionally a different one for each destination. This is not a host-filesystem quota; enforce a hard limit in the host dataset or volume as well.
 
 Each enabled destination is announced over Bonjour as a backup disk (`_adisk._tcp`), so it appears in the Time Machine settings of the Macs on the network. The folder must sit on a filesystem that keeps extended attributes; the panel checks this when a destination is enabled and shows a notice on any published folder that lacks them.
+
+The Finder server icon stays the same when a Time Machine destination is enabled. Samba's `fruit:model` describes the entire server; backup eligibility is advertised separately for each configured destination.
 
 ## Operation
 

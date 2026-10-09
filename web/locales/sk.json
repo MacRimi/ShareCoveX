@@ -358,5 +358,6 @@
   "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "Priečinok v zdieľanom zdroji môže cez Sambu iba pridať prístup: hostí, ďalších používateľov alebo oprávnenie na zápis.",
   "Marca el acceso que quieres anadir a esta carpeta.": "Vyberte prístup, ktorý chcete pridať k tomuto priečinku.",
   "Origen en el servidor: {origin}": "Zdroj na serveri: {origin}",
-  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfigurácia odstránená. Priečinok sa znova zdieľa iba s nastaveniami nadradeného zdroja."
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfigurácia odstránená. Priečinok sa znova zdieľa iba s nastaveniami nadradeného zdroja.",
+  "Ruta NFS": "Cesta NFS"
 }

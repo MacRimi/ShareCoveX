@@ -74,8 +74,8 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("<type>_smb._tcp</type>", avahi_service(value))
         self.assertIn("model=Xserve", avahi_service(value))
         value["shares"] = [{"enabled": True, "smb_enabled": False, "time_machine": True}]
-        self.assertIn("model=TimeCapsule8,119", avahi_service(value))
-        self.assertIn("fruit:model = TimeCapsule8,119", samba_conf(value))
+        self.assertIn("model=Xserve", avahi_service(value))
+        self.assertIn("fruit:model = Xserve", samba_conf(value))
         value["shares"][0]["enabled"] = False
         self.assertIn("model=Xserve", avahi_service(value))
         self.assertIn("fruit:model = Xserve", samba_conf(value))

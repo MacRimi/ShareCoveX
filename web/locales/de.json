@@ -358,5 +358,6 @@
   "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "Ein Ordner innerhalb einer freigegebenen Ressource kann über Samba nur Zugriff hinzufügen: Gäste, weitere Benutzer oder Schreibrecht.",
   "Marca el acceso que quieres anadir a esta carpeta.": "Wählen Sie den Zugriff, den Sie diesem Ordner hinzufügen möchten.",
   "Origen en el servidor: {origin}": "Quelle auf dem Server: {origin}",
-  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfiguration gelöscht. Der Ordner wird wieder nur mit den Einstellungen der übergeordneten Ressource freigegeben."
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Konfiguration gelöscht. Der Ordner wird wieder nur mit den Einstellungen der übergeordneten Ressource freigegeben.",
+  "Ruta NFS": "NFS-Pfad"
 }

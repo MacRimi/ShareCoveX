@@ -358,5 +358,6 @@
   "A folder inside a shared one can only add access over SMB: guests, other users or write permission": "Una cartella all'interno di una risorsa condivisa può solo aggiungere accesso tramite Samba: ospiti, altri utenti o permesso di scrittura.",
   "Marca el acceso que quieres anadir a esta carpeta.": "Scegli l'accesso che vuoi aggiungere a questa cartella.",
   "Origen en el servidor: {origin}": "Origine sul server: {origin}",
-  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Configurazione eliminata. La cartella torna a essere condivisa solo con le impostazioni della risorsa superiore."
+  "Configuracion eliminada. La carpeta vuelve a compartirse solo con los ajustes del recurso superior.": "Configurazione eliminata. La cartella torna a essere condivisa solo con le impostazioni della risorsa superiore.",
+  "Ruta NFS": "Percorso NFS"
 }

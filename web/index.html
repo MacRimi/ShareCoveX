@@ -53,7 +53,7 @@
           <div id="smb-options" class="protocol-settings"><p id="smb-scope-hint" class="hint">Acceso y permisos SMB solo para esta ruta. Cada subcarpeta publicada conserva su propia configuracion.</p>
           <div class="switch"><input id="smb-guest" type="checkbox" aria-label="Permitir invitados sin contraseña, solo lectura"><span>Permitir invitados sin contrasena (solo lectura)</span></div>
           <p id="smb-guest-hint" class="hint" hidden>Cualquier dispositivo que alcance este recurso por red podra leer los archivos permitidos por el montaje. Marca usuarios SMB abajo si tambien quieres darles acceso autenticado; solo ellos podran escribir cuando desactives Solo lectura por SMB.</p>
-          <fieldset id="smb-user-field"><legend>Usuarios SMB autorizados</legend><small>Marca quienes pueden entrar con contrasena, incluso si tambien permites invitados. Crealos en Ajustes, Usuarios Samba.</small><div id="smb-users" class="user-picks"></div></fieldset>
+          <fieldset id="smb-user-field"><legend>Usuarios SMB autorizados</legend><small>Marca quienes pueden entrar con contrasena, incluso si tambien permites invitados. Crealos en Ajustes, Usuarios Samba.</small><button id="open-smb-users" type="button" class="secondary-action">Usuarios Samba</button><div id="smb-users" class="user-picks"></div></fieldset>
           <label>Redes SMB permitidas <small>Opcional, una IPv4 o CIDR por linea. Si esta vacio, cualquier cliente de red puede intentar autenticarse.</small><textarea id="smb-clients" rows="2" placeholder="192.168.0.0/24"></textarea></label>
           <div class="switch"><input id="smb-browseable" type="checkbox" checked aria-label="Mostrar el recurso al explorar la red SMB"><span>Mostrar el recurso al explorar la red SMB</span></div>
           <label>Cifrado SMB<select id="smb-encryption"><option value="default">Negociación normal (predeterminado)</option><option value="required">Obligatorio (requiere cliente SMB3)</option></select></label>
@@ -64,6 +64,7 @@
         </section>
         <section id="nfs-section" class="protocol-section" aria-labelledby="nfs-section-title">
           <div class="protocol-section-head"><div><span class="eyebrow">ACCESO DE RED</span><h3 id="nfs-section-title">NFS</h3></div><div class="switch"><input id="nfs-enabled" type="checkbox" aria-label="Compartir por NFS"><span>Compartir por NFS</span></div></div>
+          <p id="nfs-resource-address" class="hint" hidden><span>Ruta NFS</span> <code id="nfs-resource-path" data-i18n-ignore></code></p>
           <div id="nfs-options" class="protocol-settings"><p class="hint">Acceso y permisos NFS solo para esta ruta. NFS usa las redes y los UID/GID indicados aqui, no los usuarios Samba.</p>
           <label>Clientes NFS permitidos <small>Una IPv4 o red CIDR por linea; necesario si activas NFS.</small><textarea id="clients" rows="3" placeholder="192.168.0.0/24"></textarea></label>
           <p id="nfs-collaborative-hint" class="hint" hidden>El modo colaborativo esta activo: NFS usa la identidad compartida configurada en Ajustes para que sus archivos sean editables tambien por Samba.</p>
